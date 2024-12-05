@@ -10,5 +10,5 @@ A Telegram bot for downloading videos from YouTube, Instagram, and TikTok in var
 ## Installation  
 1. Clone the repository:  
    ```bash
-   git clone https://github.com/your-username/media-downloader-bot.git
+   git clone 
    cd media-downloader-bot
