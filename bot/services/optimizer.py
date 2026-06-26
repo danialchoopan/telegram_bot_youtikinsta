@@ -1,0 +1,198 @@
+import os
+import time
+import subprocess
+import shutil
+from pathlib import Path
+
+from bot.config import Config
+from bot.utils.helpers import generate_random_string
+
+
+class QualityOptimizer:
+    def __init__(self):
+        Config.ensure_directories()
+        self.ffmpeg = Config.FFMPEG_PATH
+
+    def optimize(self, file_path: str, format_type: str, progress_callback=None) -> str:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if self._is_already_optimized(file_path, format_type):
+            return file_path
+
+        ext = self._get_output_ext(format_type)
+        output_path = str(Config.OPTIMIZED_PATH / f"opt_{generate_random_string(10)}{ext}")
+
+        start_time = time.time()
+
+        if format_type in ("mp3", "m4a"):
+            self._optimize_audio(file_path, output_path, format_type, progress_callback)
+        else:
+            self._optimize_video(file_path, output_path, format_type, progress_callback)
+
+        elapsed = time.time() - start_time
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise RuntimeError("Optimization failed: output file is empty or missing")
+
+        original_size = os.path.getsize(file_path)
+        optimized_size = os.path.getsize(output_path)
+
+        if optimized_size > original_size:
+            os.remove(output_path)
+            return file_path
+
+        return output_path
+
+    def _optimize_video(self, input_path: str, output_path: str, format_type: str, progress_callback=None):
+        if format_type == "mkv":
+            settings = {
+                "vcodec": "libx264",
+                "acodec": "aac",
+                "pix_fmt": "yuv420p",
+                "preset": "slow",
+                "crf": 21,
+                "maxrate": "6M",
+                "bufsize": "12M",
+                "vf": "scale=min(1920,iw):-2",
+            }
+        else:
+            settings = {
+                "vcodec": "libx264",
+                "acodec": "aac",
+                "pix_fmt": "yuv420p",
+                "movflags": "+faststart",
+                "preset": Config.OPTIMIZATION_PRESET,
+                "crf": 23,
+                "maxrate": f"{Config.VIDEO_BITRATE_MBPS}M",
+                "bufsize": f"{Config.VIDEO_BITRATE_MBPS * 2}M",
+                "vf": "scale=min(1920,iw):-2",
+                "profile:v": "high",
+                "level": "4.0",
+            }
+
+        cmd = [
+            self.ffmpeg, "-y", "-i", input_path,
+            "-vcodec", settings["vcodec"],
+            "-acodec", settings["acodec"],
+            "-pix_fmt", settings["pix_fmt"],
+            "-preset", settings["preset"],
+            "-crf", str(settings["crf"]),
+            "-maxrate", settings["maxrate"],
+            "-bufsize", settings["bufsize"],
+            "-vf", settings["vf"],
+            "-profile:v", settings["profile:v"],
+            "-level", settings["level"],
+        ]
+
+        if settings.get("movflags"):
+            cmd.extend(["-movflags", settings["movflags"]])
+
+        cmd.append(output_path)
+        self._run_ffmpeg(cmd, progress_callback)
+
+    def _optimize_audio(self, input_path: str, output_path: str, format_type: str, progress_callback=None):
+        if format_type == "mp3":
+            cmd = [
+                self.ffmpeg, "-y", "-i", input_path,
+                "-acodec", "libmp3lame",
+                "-ab", "192k",
+                "-ar", "44100",
+                "-ac", "2",
+                "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
+                output_path,
+            ]
+        else:
+            cmd = [
+                self.ffmpeg, "-y", "-i", input_path,
+                "-acodec", "aac",
+                "-ab", "128k",
+                "-ar", "44100",
+                "-ac", "2",
+                "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
+                output_path,
+            ]
+
+        self._run_ffmpeg(cmd, progress_callback)
+
+    def _run_ffmpeg(self, cmd: list, progress_callback=None):
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
+            _, stderr = process.communicate(timeout=Config.MAX_OPTIMIZATION_TIME_SECONDS)
+            if process.returncode != 0:
+                raise RuntimeError(f"FFmpeg error: {stderr[:500]}")
+        except subprocess.TimeoutExpired:
+            process.kill()
+            raise RuntimeError("Optimization timed out")
+
+    def _is_already_optimized(self, file_path: str, format_type: str) -> bool:
+        if format_type in ("mp3", "m4a"):
+            return file_path.endswith(f".{format_type}")
+        return file_path.endswith(".mp4") and self._check_h264(file_path)
+
+    def _check_h264(self, file_path: str) -> bool:
+        try:
+            cmd = [
+                self.ffmpeg, "-i", file_path,
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name",
+                "-v", "quiet",
+                "-of", "csv=p=0",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return "h264" in result.stdout.lower()
+        except Exception:
+            return False
+
+    def get_video_info(self, file_path: str) -> dict:
+        try:
+            cmd = [
+                self.ffmpeg, "-i", file_path,
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height,codec_name,duration",
+                "-show_entries", "format=duration,size",
+                "-v", "quiet",
+                "-of", "json",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            import json
+            data = json.loads(result.stdout)
+            stream = data.get("streams", [{}])[0]
+            fmt = data.get("format", {})
+            return {
+                "width": int(stream.get("width", 0)),
+                "height": int(stream.get("height", 0)),
+                "codec": stream.get("codec_name", "unknown"),
+                "duration": float(fmt.get("duration", 0)),
+                "size": int(fmt.get("size", 0)),
+            }
+        except Exception:
+            return {"width": 0, "height": 0, "codec": "unknown", "duration": 0, "size": 0}
+
+    def _get_output_ext(self, format_type: str) -> str:
+        ext_map = {"mp4": ".mp4", "mkv": ".mkv", "mp3": ".mp3", "m4a": ".m4a", "best": ".mp4"}
+        return ext_map.get(format_type, ".mp4")
+
+    def extract_thumbnail(self, file_path: str) -> str | None:
+        if not Config.ENABLE_THUMBNAIL_EXTRACTION:
+            return None
+        thumb_path = str(Config.OPTIMIZED_PATH / f"thumb_{generate_random_string(8)}.jpg")
+        try:
+            cmd = [
+                self.ffmpeg, "-y", "-i", file_path,
+                "-ss", "00:00:01",
+                "-vframes", "1",
+                "-vf", "scale=320:-1",
+                thumb_path,
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=15)
+            if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+                return thumb_path
+        except Exception:
+            pass
+        return None

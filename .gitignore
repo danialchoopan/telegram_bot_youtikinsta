@@ -1,1 +1,45 @@
 projectupdatethisproject.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+
+# Database
+database/*.db
+database/*.db-wal
+database/*.db-shm
+
+# Downloads
+downloads/temp/*
+downloads/optimized/*
+!downloads/temp/.gitkeep
+!downloads/optimized/.gitkeep
+
+# Logs
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
