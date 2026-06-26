@@ -131,7 +131,7 @@ def setup_wizard():
     Guides user through:
     1. Checking system dependencies
     2. Creating .env file with bot token
-    3. Setting admin username
+    3. Setting admin user ID
     4. Configuring basic settings
     """
     print("\n" + "=" * 50)
@@ -185,7 +185,7 @@ def setup_wizard():
         with open(env_file, "w") as f:
             f.write("# Telegram Bot Configuration\n")
             f.write("TELEGRAM_BOT_TOKEN=\n")
-            f.write("ADMIN_USERNAME=\n")
+            f.write("ADMIN_USER_ID=\n")
             f.write("\n")
             f.write("# Limits\n")
             f.write("MAX_RESOLUTION=1080\n")
@@ -207,17 +207,18 @@ def setup_wizard():
         print("❌ Bot token is required!")
         return False
 
-    # Step 4: Get admin username
+    # Step 4: Get admin user ID
     print("\n📋 Step 4: Admin Configuration")
-    admin_username = input("   Enter admin username (without @): ").strip()
+    print("   Send /start to @userinfobot on Telegram to get your user ID")
+    admin_user_id = input("   Enter admin user ID (chat ID): ").strip()
 
     # Update .env file
     with open(env_file, "r") as f:
         content = f.read()
 
     content = content.replace("TELEGRAM_BOT_TOKEN=", f"TELEGRAM_BOT_TOKEN={bot_token}")
-    if admin_username:
-        content = content.replace("ADMIN_USERNAME=", f"ADMIN_USERNAME={admin_username}")
+    if admin_user_id:
+        content = content.replace("ADMIN_USER_ID=", f"ADMIN_USER_ID={admin_user_id}")
 
     with open(env_file, "w") as f:
         f.write(content)
@@ -232,11 +233,11 @@ def setup_wizard():
     Database()
     print("✅ Database initialized")
 
-    # Set admin in database if username provided
-    if admin_username:
+    # Set admin in database if user ID provided
+    if admin_user_id:
         db = Database()
-        # We'll set admin after first /start command
-        print(f"✅ Admin username set: @{admin_username}")
+        # Admin will be auto-promoted when they first use admin commands
+        print(f"✅ Admin user ID set: {admin_user_id}")
 
     print("\n" + "=" * 50)
     print("  ✅ SETUP COMPLETE!")
@@ -298,8 +299,8 @@ def validate_config() -> bool:
         print("Or copy .env.example to .env and add your bot token.")
         return False
 
-    if not Config.ADMIN_USERNAME:
-        print("WARNING: ADMIN_USERNAME not set. Admin features may not work correctly.")
+    if not Config.ADMIN_USER_ID:
+        print("WARNING: ADMIN_USER_ID not set. Admin features may not work correctly.")
 
     return True
 

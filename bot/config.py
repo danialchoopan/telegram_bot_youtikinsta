@@ -9,7 +9,7 @@ for all configurable parameters in the application.
 
 Environment Variables:
     TELEGRAM_BOT_TOKEN    - Your Telegram bot token from @BotFather
-    ADMIN_USERNAME        - Telegram username of the bot administrator
+    ADMIN_USER_ID         - Telegram user ID (chat ID) of the bot administrator
     MAX_RESOLUTION        - Maximum video resolution (default: 1080)
     DEFAULT_FORMAT        - Default output format (mp4/mkv/mp3/m4a)
     ENABLE_4K_BLOCKING    - Block 4K downloads (true/false)
@@ -44,7 +44,8 @@ class Config:
     # Telegram Bot Configuration
     # ==========================================
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+    # Admin user's Telegram chat ID (user_id), not username
+    ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
 
     # ==========================================
     # Rate Limiting & User Limits

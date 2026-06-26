@@ -37,7 +37,7 @@ The setup script will:
 1. Install Python 3.11, ffmpeg, and other dependencies
 2. Create a virtual environment
 3. Install Python packages
-4. Prompt you for your Telegram bot token and admin username
+4. Prompt you for your Telegram bot token and admin user ID
 5. Set up systemd service for auto-start
 6. Start the bot
 
@@ -102,7 +102,8 @@ nano .env
 Edit `.env` with your settings:
 ```
 TELEGRAM_BOT_TOKEN=your_bot_token_here
-ADMIN_USERNAME=your_telegram_username
+# Send /start to @userinfobot on Telegram to get your user ID
+ADMIN_USER_ID=123456789
 ```
 
 ### 6. Run the bot
@@ -113,19 +114,123 @@ python runBot.py
 
 ## Docker Deployment
 
-```bash
-# Build image
-docker build -t media-downloader-bot .
+### Quick Start with Docker
 
-# Run container
+```bash
+# 1. Clone the repository
+git clone https://github.com/yourusername/telegram_bot_youtikinsta.git
+cd telegram_bot_youtikinsta
+
+# 2. Create your .env file
+cp .env.example .env
+nano .env  # Add your TELEGRAM_BOT_TOKEN and ADMIN_USER_ID
+
+# 3. Build and run with Docker
+docker build -t media-downloader-bot .
 docker run -d \
   --name media-bot \
+  --restart unless-stopped \
   --env-file .env \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/logs:/app/logs \
   -v $(pwd)/database:/app/database \
   media-downloader-bot
 ```
+
+### Docker Compose (Recommended)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: '3.8'
+
+services:
+  media-bot:
+    build: .
+    container_name: media-downloader-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./database:/app/database
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+Then run:
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+
+# Restart
+docker-compose restart
+
+# Rebuild after changes
+docker-compose up -d --build
+```
+
+### Docker Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `docker build -t media-downloader-bot .` | Build the Docker image |
+| `docker run -d --name media-bot --env-file .env media-downloader-bot` | Start container |
+| `docker logs -f media-bot` | View container logs |
+| `docker stop media-bot` | Stop the container |
+| `docker start media-bot` | Start stopped container |
+| `docker restart media-bot` | Restart the container |
+| `docker rm -f media-bot` | Remove the container |
+| `docker exec -it media-bot bash` | Open shell in container |
+
+### Persistent Data
+
+The Docker setup uses volumes to persist data outside the container:
+
+| Volume | Container Path | Purpose |
+|--------|---------------|---------|
+| `./downloads` | `/app/downloads` | Downloaded and optimized files |
+| `./logs` | `/app/logs` | Application logs |
+| `./database` | `/app/database` | SQLite database |
+
+This ensures your data survives container restarts and updates.
+
+### Environment Variables in Docker
+
+You can pass environment variables in three ways:
+
+1. **Using .env file** (recommended):
+   ```bash
+   docker run -d --env-file .env media-downloader-bot
+   ```
+
+2. **Using -e flag**:
+   ```bash
+   docker run -d \
+     -e TELEGRAM_BOT_TOKEN=your_token \
+     -e ADMIN_USER_ID=123456789 \
+     media-downloader-bot
+   ```
+
+3. **Using docker-compose.yml**:
+   ```yaml
+   environment:
+     - TELEGRAM_BOT_TOKEN=your_token
+     - ADMIN_USER_ID=123456789
+   ```
 
 ## Bot Commands
 
@@ -147,7 +252,7 @@ All configuration is done through the `.env` file. See `.env.example` for all av
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TELEGRAM_BOT_TOKEN` | - | Your Telegram bot token |
-| `ADMIN_USERNAME` | - | Telegram username of the admin |
+| `ADMIN_USER_ID` | 0 | Telegram user ID of the admin (get from @userinfobot) |
 | `MAX_RESOLUTION` | 1080 | Maximum download resolution |
 | `DEFAULT_FORMAT` | mp4 | Default output format |
 | `ENABLE_4K_BLOCKING` | true | Block 4K downloads |

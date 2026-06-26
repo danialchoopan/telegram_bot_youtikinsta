@@ -15,7 +15,7 @@ Commands:
 
 Access Control:
     Only users marked as admin in the database (or matching
-    ADMIN_USERNAME from .env) can use these commands.
+    ADMIN_USER_ID from .env) can use these commands.
 """
 
 import os
@@ -31,21 +31,20 @@ def admin_only(handler):
     """
     Decorator to restrict handler access to admin users only.
 
-    Checks if user is admin in database or matches ADMIN_USERNAME.
+    Checks if user is admin in database or matches ADMIN_USER_ID.
     Non-admin users see an "access denied" message.
     """
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = Database()
         user_id = update.effective_user.id
-        username = update.effective_user.username or ""
 
         # Check if user is already marked as admin in database
         if db.is_admin(user_id):
             return await handler(update, context)
 
-        # Check if username matches admin username from config
+        # Check if user_id matches admin user ID from config
         # Auto-promote to admin if match
-        if username.lower() == Config.ADMIN_USERNAME.lower():
+        if Config.ADMIN_USER_ID and user_id == Config.ADMIN_USER_ID:
             db.set_admin(user_id, True)
             return await handler(update, context)
 
