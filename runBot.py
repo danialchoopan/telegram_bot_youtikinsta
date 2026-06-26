@@ -212,16 +212,21 @@ def setup_wizard():
     print("   Send /start to @userinfobot on Telegram to get your user ID")
     admin_user_id = input("   Enter admin user ID (chat ID): ").strip()
 
-    # Update .env file
+    # Update .env file line by line
     with open(env_file, "r") as f:
-        content = f.read()
+        lines = f.readlines()
 
-    content = content.replace("TELEGRAM_BOT_TOKEN=", f"TELEGRAM_BOT_TOKEN={bot_token}")
-    if admin_user_id:
-        content = content.replace("ADMIN_USER_ID=", f"ADMIN_USER_ID={admin_user_id}")
+    new_lines = []
+    for line in lines:
+        if line.startswith("TELEGRAM_BOT_TOKEN="):
+            new_lines.append(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+        elif line.startswith("ADMIN_USER_ID=") and admin_user_id:
+            new_lines.append(f"ADMIN_USER_ID={admin_user_id}\n")
+        else:
+            new_lines.append(line)
 
     with open(env_file, "w") as f:
-        f.write(content)
+        f.writelines(new_lines)
 
     # Step 5: Create directories
     print("\n📋 Step 5: Creating directory structure...")

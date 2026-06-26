@@ -194,7 +194,7 @@ async def playlist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Parse callback data: "pl_{url}|{format}"
-    data = query.data.replace("pl_", "")
+    data = query.data[3:]  # Skip "pl_" prefix only
     url, format_type = data.rsplit("|", 1)
 
     db = Database()
@@ -232,7 +232,7 @@ async def format_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     # Parse callback data: "dl_{url}|{format}"
-    data = query.data.replace("dl_", "")
+    data = query.data[3:]  # Skip "dl_" prefix only
     url, format_type = data.rsplit("|", 1)
 
     db = Database()
@@ -290,7 +290,7 @@ async def confirm_mkv_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     # Parse callback data: "dl_confirm_{url}|{format}"
-    data = query.data.replace("dl_confirm_", "")
+    data = query.data[11:]  # Skip "dl_confirm_" prefix only
     url, format_type = data.rsplit("|", 1)
 
     db = Database()

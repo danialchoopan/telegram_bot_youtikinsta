@@ -149,10 +149,13 @@ setup_env() {
             sed -i "s/TELEGRAM_BOT_TOKEN=.*/TELEGRAM_BOT_TOKEN=$BOT_TOKEN/" "$ENV_FILE"
         fi
 
-        # Prompt for admin username
-        read -p "Enter admin Telegram username (without @): " ADMIN_USER
-        if [[ -n "$ADMIN_USER" ]]; then
-            sed -i "s/ADMIN_USERNAME=.*/ADMIN_USERNAME=$ADMIN_USER/" "$ENV_FILE"
+        # Prompt for admin user ID (chat ID)
+        echo ""
+        echo -e "${YELLOW}To get your chat ID, send /start to @userinfobot on Telegram${NC}"
+        echo ""
+        read -p "Enter admin Telegram user ID (chat ID): " ADMIN_UID
+        if [[ -n "$ADMIN_UID" ]]; then
+            sed -i "s/ADMIN_USER_ID=.*/ADMIN_USER_ID=$ADMIN_UID/" "$ENV_FILE"
         fi
 
         print_success ".env file configured"
