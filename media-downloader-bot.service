@@ -1,0 +1,49 @@
+# ==========================================
+#   Media Downloader Bot - Systemd Service
+# ==========================================
+#
+# This is the systemd service file for running the bot as a service.
+# It's included here for reference. The setup.sh script will create
+# and configure the service automatically.
+#
+# Manual installation:
+#     sudo cp media-downloader-bot.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable media-downloader-bot
+#     sudo systemctl start media-downloader-bot
+#
+# ==========================================
+
+[Unit]
+Description=Media Downloader Telegram Bot
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=media-bot
+Group=media-bot
+WorkingDirectory=/opt/media-downloader-bot
+ExecStart=/opt/media-downloader-bot/venv/bin/python runBot.py
+Restart=always
+RestartSec=10
+Environment=PATH=/opt/media-downloader-bot/venv/bin:/usr/bin
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=media-downloader-bot
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/media-downloader-bot/downloads /opt/media-downloader-bot/logs /opt/media-downloader-bot/database
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

@@ -19,13 +19,45 @@ A Telegram bot for downloading videos from YouTube, Instagram, and TikTok in var
 - **Real-time progress**: Multi-stage progress updates during download/optimization
 - **SQLite database**: Tracks users, downloads, queue, and quality statistics
 
-## Requirements
+## Quick Start (Ubuntu Server)
 
-- Python 3.10+
-- ffmpeg (installed and in PATH)
-- yt-dlp (installed and in PATH)
+### One-Command Setup
 
-## Installation
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/telegram_bot_youtikinsta.git
+cd telegram_bot_youtikinsta
+
+# Make setup script executable and run it
+chmod +x setup.sh
+sudo ./setup.sh
+```
+
+The setup script will:
+1. Install Python 3.11, ffmpeg, and other dependencies
+2. Create a virtual environment
+3. Install Python packages
+4. Prompt you for your Telegram bot token and admin username
+5. Set up systemd service for auto-start
+6. Start the bot
+
+### After Setup
+
+```bash
+# View bot logs
+journalctl -u media-downloader-bot -f
+
+# Restart bot
+sudo systemctl restart media-downloader-bot
+
+# Stop bot
+sudo systemctl stop media-downloader-bot
+
+# Check status
+sudo systemctl status media-downloader-bot
+```
+
+## Manual Installation
 
 ### 1. Clone the repository
 
@@ -34,58 +66,65 @@ git clone https://github.com/yourusername/telegram_bot_youtikinsta.git
 cd telegram_bot_youtikinsta
 ```
 
-### 2. Create virtual environment
+### 2. Install system dependencies
 
+**Ubuntu/Debian:**
 ```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Linux/macOS
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Install ffmpeg
-
-**Windows:**
-Download from https://ffmpeg.org/download.html and add to PATH.
-
-**Linux:**
-```bash
-sudo apt update && sudo apt install ffmpeg
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3-pip ffmpeg git
 ```
 
 **macOS:**
 ```bash
-brew install ffmpeg
+brew install python@3.11 ffmpeg git
+```
+
+### 3. Create virtual environment
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+```
+
+### 4. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
 ```
 
 ### 5. Configure environment
 
 ```bash
 cp .env.example .env
+nano .env
 ```
 
-Edit `.env` with your Telegram bot token and admin username.
+Edit `.env` with your settings:
+```
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+ADMIN_USERNAME=your_telegram_username
+```
 
 ### 6. Run the bot
 
 ```bash
-python -m bot.main
+python runBot.py
 ```
 
 ## Docker Deployment
 
 ```bash
+# Build image
 docker build -t media-downloader-bot .
-docker run -d --name bot --env-file .env media-downloader-bot
+
+# Run container
+docker run -d \
+  --name media-bot \
+  --env-file .env \
+  -v $(pwd)/downloads:/app/downloads \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/database:/app/database \
+  media-downloader-bot
 ```
 
 ## Bot Commands
@@ -115,6 +154,7 @@ All configuration is done through the `.env` file. See `.env.example` for all av
 | `VIDEO_BITRATE_MBPS` | 4 | Video bitrate for optimization |
 | `AUDIO_BITRATE_KBPS` | 128 | Audio bitrate for optimization |
 | `MAX_DAILY_DOWNLOADS_PER_USER` | 10 | Daily download limit per user |
+| `MAX_CONCURRENT_QUEUED_PER_USER` | 3 | Max queue items per user |
 
 ## How It Works
 
@@ -131,33 +171,58 @@ All configuration is done through the `.env` file. See `.env.example` for all av
 
 ```
 telegram_bot_youtikinsta/
+├── runBot.py                  # Entry point - run this to start the bot
 ├── bot/
 │   ├── __init__.py
-│   ├── main.py              # Entry point
-│   ├── config.py             # Configuration management
-│   ├── database.py           # SQLite database
+│   ├── config.py              # Configuration from .env
+│   ├── database.py            # SQLite database manager
 │   ├── handlers/
-│   │   ├── start.py          # /start and language selection
-│   │   ├── download.py       # URL handling and format selection
-│   │   ├── admin.py          # Admin commands
-│   │   └── settings.py       # User preferences
+│   │   ├── start.py           # /start and language selection
+│   │   ├── download.py        # URL handling and format selection
+│   │   ├── admin.py           # Admin commands
+│   │   └── settings.py        # User preferences
 │   ├── services/
-│   │   ├── downloader.py     # yt-dlp wrapper
-│   │   ├── optimizer.py      # ffmpeg optimization
-│   │   ├── analyzer.py       # Media analysis
-│   │   └── queue_worker.py   # Background queue processor
+│   │   ├── downloader.py      # yt-dlp download wrapper
+│   │   ├── optimizer.py       # ffmpeg optimization
+│   │   ├── analyzer.py        # Media analysis (yt-dlp)
+│   │   └── queue_worker.py    # Background queue processor
 │   └── utils/
-│       ├── messages.py       # Bilingual message templates
-│       └── helpers.py        # Utility functions
+│       ├── messages.py        # Bilingual message templates
+│       └── helpers.py         # Utility functions
 ├── downloads/
-│   ├── temp/                 # Temporary download files
-│   └── optimized/            # Optimized output files
-├── database/                 # SQLite database files
-├── logs/                     # Application logs
-├── requirements.txt
-├── Dockerfile
-├── .env.example
+│   ├── temp/                  # Temporary download files
+│   └── optimized/             # Optimized output files
+├── database/                  # SQLite database files
+├── logs/                      # Application logs
+├── legacy/                    # Old bot code (reference only)
+├── requirements.txt           # Python dependencies
+├── Dockerfile                 # Docker configuration
+├── setup.sh                   # Ubuntu server setup script
+├── media-downloader-bot.service # Systemd service file
+├── .env.example               # Environment template
 └── .gitignore
+```
+
+## Legacy Code
+
+The `legacy/` folder contains the original bot code (`telbot_yutikinsta_original.py`) for reference. The new modular code in `bot/` completely replaces it.
+
+## Troubleshooting
+
+### Bot won't start
+- Check `.env` file has valid `TELEGRAM_BOT_TOKEN`
+- Ensure ffmpeg is installed: `ffmpeg -version`
+- Check logs: `journalctl -u media-downloader-bot -n 50`
+
+### Downloads failing
+- Check disk space: `df -h`
+- Check ffmpeg can process: `ffmpeg -i test.mp4`
+- Verify yt-dlp works: `yt-dlp --version`
+
+### Permission errors
+```bash
+sudo chown -R media-bot:media-bot /opt/media-downloader-bot
+sudo chmod -R 755 /opt/media-downloader-bot
 ```
 
 ## License

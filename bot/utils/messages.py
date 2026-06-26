@@ -1,8 +1,34 @@
+"""
+==========================================
+  Bilingual Messages Module
+==========================================
+
+Centralized message templates for English and Persian (Farsi).
+All user-facing messages are stored here for easy translation.
+
+Message Categories:
+    - Welcome: /start command responses
+    - Download: Progress and status messages
+    - Format: Format selection messages
+    - Queue: Queue position and status
+    - Admin: Admin command responses
+    - Settings: User preference messages
+    - Errors: Error and warning messages
+
+Usage:
+    from bot.utils.messages import get_message
+    msg = get_message("en", "welcome")
+    msg = get_message("fa", "error", error="Something went wrong")
+"""
+
 MESSAGES = {
     "en": {
+        # Welcome messages
         "welcome": "👋 Welcome to Media Downloader Bot!\n\nSend me a link from YouTube, Instagram, or TikTok and I'll download it for you.\n\nChoose your language:",
         "welcome_back": "👋 Welcome back, {name}!\n\nSend me a link to download.",
         "language_selected": "✅ Language set to English!",
+
+        # Format selection
         "select_format": "🎯 Choose output format for:\n\n📹 {title}\n⏱️ Duration: {duration}\n📦 Size: {size}\n\nAvailable formats:",
         "mp4": "📹 MP4 Video",
         "mkv": "🎬 MKV Video",
@@ -10,12 +36,18 @@ MESSAGES = {
         "m4a": "🎶 M4A Audio",
         "best": "⚡ Best for Telegram",
         "format_selected": "✅ {format} selected ({codec}, {quality})",
+
+        # Queue messages
         "queue_added": "🚦 Added to queue\n📊 Position: #{position}\n⏱️ Estimated wait: ~{minutes} min",
+
+        # Progress stages
         "downloading": "⏳ Stage 1/4: Downloading {quality} source...\n📥 {percent}% ({current}/{total})",
         "converting": "⏳ Stage 2/4: Converting to {format}...\n🔄 {percent}%",
         "optimizing": "⏳ Stage 3/4: Optimizing for Telegram...\n🎯 Target: {quality} @ {bitrate}Mbps\n📐 Compressing: {original} → {optimized} ({reduction}% reduction)",
         "uploading": "⏳ Stage 4/4: Uploading to Telegram...\n📤 {percent}%",
         "complete": "✅ Download complete!\n\n📁 {title}\n📦 Original: {original} → Optimized: {optimized}\n🎥 Resolution: {resolution}\n🎵 Audio: {audio}\n⏱️ Total time: {time}\n🗑️ Files cleaned up",
+
+        # Error messages
         "error": "❌ Error occurred\n\n{error}\n\nPlease try again with a valid link.",
         "blocked_4k": "🚫 4K Downloads Not Supported\n\nThis video is available in 4K (2160p), but we only support:\n• 1080p (Full HD)\n• 720p (HD)\n• 480p (Standard)\n• Audio formats\n\n💡 Please select a lower quality format.",
         "rate_limit": "⚠️ Daily limit reached!\n\nYou've used {used}/{limit} downloads today.\nPlease try again tomorrow.",
@@ -24,23 +56,34 @@ MESSAGES = {
         "invalid_url": "❌ Invalid URL\n\nPlease send a valid YouTube, Instagram, or TikTok link.",
         "analyzing": "🔍 Analyzing link...\n📺 Platform: {platform}",
         "not_available": "⚠️ Bot is not available. Please contact admin.",
+
+        # Admin messages
         "admin_stats": "📊 Bot Statistics\n━━━━━━━━━━━━━━━━━━━\n👥 Users: {users}\n📥 Downloads: {downloads}\n💾 Data: {data} GB\n📈 Success: {success}%\n🔄 Queue: {queue} items",
         "admin_added": "✅ User {user_id} added to allowed list.",
         "admin_banned": "🚫 User {user_id} banned for {hours} hours.",
+
+        # Settings messages
         "settings": "👤 User Settings\n━━━━━━━━━━━━━━━━━━━\n🌐 Language: {language}\n🎯 Format: {format}\n📐 Quality: {quality}\n📊 Downloads today: {today}/{limit}",
         "format_changed": "✅ Default format set to {format}",
         "quality_changed": "✅ Preferred quality set to {quality}",
+
+        # Playlist messages
         "processing_playlist": "🎬 Playlist detected: {title}\n📊 {count} videos found\n📦 Total size: {size}\n\n🎯 Format for all:",
         "large_playlist": "⚠️ Large playlist! Would you like to download all?",
+
+        # Common buttons
         "yes": "Yes",
         "no": "No",
         "cancel": "Cancel",
         "back": "← Back",
     },
     "fa": {
+        # Welcome messages (Persian)
         "welcome": "👋 به ربات دانلود مدیا خوش آمدید!\n\nلینک یوتیوب، اینستاگرام یا تیک تاک را برای من بفرستید.\n\nزبان خود را انتخاب کنید:",
         "welcome_back": "👋 خوش آمدید، {name}!\n\nلینک دانلود را بفرستید.",
         "language_selected": "✅ زبان به فارسی تنظیم شد!",
+
+        # Format selection (Persian)
         "select_format": "🎯 فرمت خروجی را انتخاب کنید:\n\n📹 {title}\n⏱️ مدت: {duration}\n📦 حجم: {size}\n\nفرمت‌های موجود:",
         "mp4": "📹 ویدیو MP4",
         "mkv": "🎬 ویدیو MKV",
@@ -48,12 +91,18 @@ MESSAGES = {
         "m4a": "🎶 صدا M4A",
         "best": "⚡ بهترین برای تلگرام",
         "format_selected": "✅ {format} انتخاب شد ({codec}, {quality})",
+
+        # Queue messages (Persian)
         "queue_added": "🚦 به صف اضافه شد\n📊 موقعیت: #{position}\n⏱️ زمان انتظار: ~{minutes} دقیقه",
+
+        # Progress stages (Persian)
         "downloading": "⏳ مرحله ۱/۴: دانلود منبع {quality}...\n📥 {percent}% ({current}/{total})",
         "converting": "⏳ مرحله ۲/۴: تبدیل به {format}...\n🔄 {percent}%",
         "optimizing": "⏳ مرحله ۳/۴: بهینه‌سازی برای تلگرام...\n🎯 هدف: {quality} @ {bitrate}Mbps\n📐 فشرده‌سازی: {original} → {optimized} ({reduction}% کاهش)",
         "uploading": "⏳ مرحله ۴/۴: آپلود به تلگرام...\n📤 {percent}%",
         "complete": "✅ دانلود کامل شد!\n\n📁 {title}\n📦 اصلی: {original} → بهینه: {optimized}\n🎥 رزولوشن: {resolution}\n🎵 صدا: {audio}\n⏱️ زمان کل: {time}\n🗑️ فایل‌ها پاک شدند",
+
+        # Error messages (Persian)
         "error": "❌ خطایی رخ داد\n\n{error}\n\nلطفاً دوباره تلاش کنید.",
         "blocked_4k": "🚫 دانلود 4K پشتیبانی نمی‌شود\n\nاین ویدیو در 4K موجود است، اما فقط پشتیبانی می‌کنیم:\n• 1080p (فول اچ‌دی)\n• 720p (اچ‌دی)\n• 480p (استاندارد)\n• فرمت‌های صوتی\n\n💡 لطفاً کیفیت پایین‌تری انتخاب کنید.",
         "rate_limit": "⚠️ سقف روزانه رسید!\n\nشما {used}/{limit} دانلود امروز استفاده کرده‌اید.\nلطفاً فردا تلاش کنید.",
@@ -62,14 +111,22 @@ MESSAGES = {
         "invalid_url": "❌ لینک نامعتبر\n\nلطفاً لینک معتبر یوتیوب، اینستاگرام یا تیک تاک بفرستید.",
         "analyzing": "🔍 در حال تحلیل لینک...\n📺 پلتفرم: {platform}",
         "not_available": "⚠️ ربات در دسترس نیست. لطفاً با مدیر تماس بگیرید.",
+
+        # Admin messages (Persian)
         "admin_stats": "📊 آمار ربات\n━━━━━━━━━━━━━━━━━━━\n👥 کاربران: {users}\n📥 دانلودها: {downloads}\n💾 داده: {data} GB\n📈 موفقیت: {success}%\n🔄 صف: {queue} مورد",
         "admin_added": "✅ کاربر {user_id} به لیست مجاز اضافه شد.",
         "admin_banned": "🚫 کاربر {user_id} به مدت {hours} ساعت معلق شد.",
+
+        # Settings messages (Persian)
         "settings": "⚙️ تنظیمات کاربر\n━━━━━━━━━━━━━━━━━━━\n🌐 زبان: {language}\n🎯 فرمت: {format}\n📐 کیفیت: {quality}\n📊 دانلودهای امروز: {today}/{limit}",
         "format_changed": "✅ فرمت پیش‌فرض به {format} تغییر کرد",
         "quality_changed": "✅ کیفیت ترجیحی به {quality} تغییر کرد",
+
+        # Playlist messages (Persian)
         "processing_playlist": "🎬 پلی‌لیست شناسایی شد: {title}\n📊 {count} ویدیو پیدا شد\n📦 حجم کل: {size}\n\n🎯 فرمت برای همه:",
         "large_playlist": "⚠️ پلی‌لیست بزرگ! آیا می‌خواهید همه را دانلود کنید؟",
+
+        # Common buttons (Persian)
         "yes": "بله",
         "no": "خیر",
         "cancel": "لغو",
@@ -79,8 +136,28 @@ MESSAGES = {
 
 
 def get_message(lang: str, key: str, **kwargs) -> str:
+    """
+    Get localized message by key with optional formatting.
+
+    Args:
+        lang: Language code (en/fa)
+        key: Message key from MESSAGES dict
+        **kwargs: Format parameters for string interpolation
+
+    Returns:
+        str: Localized and formatted message
+
+    Example:
+        get_message("en", "error", error="File not found")
+        # Returns: "❌ Error occurred\n\nFile not found\n\nPlease try again..."
+    """
+    # Fall back to English if language not found
     lang = lang if lang in MESSAGES else "en"
+
+    # Get message, fall back to English if key missing, then to key name
     msg = MESSAGES[lang].get(key, MESSAGES["en"].get(key, key))
+
+    # Format with kwargs if provided
     if kwargs:
         return msg.format(**kwargs)
     return msg

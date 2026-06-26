@@ -15,4 +15,4 @@ RUN mkdir -p downloads/temp downloads/optimized logs database
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "bot.main"]
+CMD ["python", "runBot.py"]
