@@ -25,7 +25,7 @@ A Telegram bot for downloading videos from YouTube, Instagram, and TikTok in var
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/telegram_bot_youtikinsta.git
+git clone https://github.com/danialchoopan/telegram_bot_youtikinsta.git
 cd telegram_bot_youtikinsta
 
 # Make setup script executable and run it
