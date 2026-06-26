@@ -19,9 +19,12 @@ Usage:
 """
 
 import os
+import logging
 import yt_dlp
 from bot.config import Config
 from bot.utils.helpers import generate_random_string
+
+logger = logging.getLogger(__name__)
 
 
 class Downloader:
@@ -52,6 +55,8 @@ class Downloader:
             FileNotFoundError: If downloaded file cannot be found
             Exception: If download fails
         """
+        logger.info(f"Downloading: {url} as {format_type}")
+
         # Generate unique filename to avoid collisions
         filename = f"dl_{generate_random_string(12)}"
 
@@ -68,8 +73,10 @@ class Downloader:
                 file_path = self._find_file(filename)
                 if not file_path:
                     raise FileNotFoundError("Downloaded file not found")
+                logger.info(f"Download complete: {file_path}")
                 return file_path, info
         except Exception as e:
+            logger.error(f"Download failed: {e}")
             # Cleanup on failure
             self._cleanup(filename)
             raise

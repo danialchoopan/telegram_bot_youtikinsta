@@ -33,12 +33,15 @@ Usage:
 
 import os
 import time
+import logging
 import subprocess
 import shutil
 from pathlib import Path
 
 from bot.config import Config
 from bot.utils.helpers import generate_random_string
+
+logger = logging.getLogger(__name__)
 
 
 class QualityOptimizer:
@@ -70,11 +73,14 @@ class QualityOptimizer:
             FileNotFoundError: If input file doesn't exist
             RuntimeError: If optimization fails
         """
+        logger.info(f"Optimizing: {file_path} -> {format_type}")
+
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Skip optimization if file is already in optimal format
         if self._is_already_optimized(file_path, format_type):
+            logger.info(f"File already optimized, skipping: {file_path}")
             return file_path
 
         # Generate output path
@@ -90,6 +96,7 @@ class QualityOptimizer:
             self._optimize_video(file_path, output_path, format_type, progress_callback)
 
         elapsed = time.time() - start_time
+        logger.info(f"Optimization completed in {elapsed:.1f}s")
 
         # Verify output file exists and has content
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
@@ -99,9 +106,11 @@ class QualityOptimizer:
         original_size = os.path.getsize(file_path)
         optimized_size = os.path.getsize(output_path)
         if optimized_size > original_size:
+            logger.info(f"Optimized larger than original ({optimized_size} > {original_size}), using original")
             os.remove(output_path)
             return file_path
 
+        logger.info(f"Optimized: {original_size} -> {optimized_size} bytes")
         return output_path
 
     def _optimize_video(self, input_path: str, output_path: str, format_type: str, progress_callback=None):
@@ -113,52 +122,32 @@ class QualityOptimizer:
         """
         # MKV uses slightly different settings
         if format_type == "mkv":
-            settings = {
-                "vcodec": "libx264",
-                "acodec": "aac",
-                "pix_fmt": "yuv420p",
-                "preset": "slow",           # Better quality for MKV
-                "crf": 21,                  # Higher quality than MP4
-                "maxrate": "6M",
-                "bufsize": "12M",
-                "vf": "scale=min(1920,iw):-2",  # Cap at 1080p width
-            }
+            cmd = [
+                self.ffmpeg, "-y", "-i", input_path,
+                "-vcodec", "libx264",
+                "-acodec", "aac",
+                "-preset", "slow",
+                "-crf", "21",
+                "-maxrate", "6M",
+                "-bufsize", "12M",
+                "-vf", "scale=min(1920,iw):-2",
+                output_path,
+            ]
         else:
-            # MP4 settings optimized for Telegram
-            settings = {
-                "vcodec": "libx264",        # H.264 for compatibility
-                "acodec": "aac",            # AAC audio
-                "pix_fmt": "yuv420p",       # Standard pixel format
-                "movflags": "+faststart",   # Enable streaming
-                "preset": Config.OPTIMIZATION_PRESET,
-                "crf": 23,                  # Good quality/size balance
-                "maxrate": f"{Config.VIDEO_BITRATE_MBPS}M",
-                "bufsize": f"{Config.VIDEO_BITRATE_MBPS * 2}M",
-                "vf": "scale=min(1920,iw):-2",  # Cap at 1080p width
-                "profile:v": "high",        # H.264 High profile
-                "level": "4.0",             # Compatibility level
-            }
+            # MP4 settings optimized for Telegram (compatible with older ffmpeg)
+            cmd = [
+                self.ffmpeg, "-y", "-i", input_path,
+                "-vcodec", "libx264",
+                "-acodec", "aac",
+                "-pix_fmt", "yuv420p",
+                "-preset", Config.OPTIMIZATION_PRESET,
+                "-crf", "23",
+                "-maxrate", f"{Config.VIDEO_BITRATE_MBPS}M",
+                "-bufsize", f"{Config.VIDEO_BITRATE_MBPS * 2}M",
+                "-vf", "scale=min(1920,iw):-2",
+                output_path,
+            ]
 
-        # Build ffmpeg command
-        cmd = [
-            self.ffmpeg, "-y", "-i", input_path,
-            "-vcodec", settings["vcodec"],
-            "-acodec", settings["acodec"],
-            "-pix_fmt", settings["pix_fmt"],
-            "-preset", settings["preset"],
-            "-crf", str(settings["crf"]),
-            "-maxrate", settings["maxrate"],
-            "-bufsize", settings["bufsize"],
-            "-vf", settings["vf"],
-            "-profile:v", settings["profile:v"],
-            "-level", settings["level"],
-        ]
-
-        # Add faststart flag if present
-        if settings.get("movflags"):
-            cmd.extend(["-movflags", settings["movflags"]])
-
-        cmd.append(output_path)
         self._run_ffmpeg(cmd, progress_callback)
 
     def _optimize_audio(self, input_path: str, output_path: str, format_type: str, progress_callback=None):
@@ -203,6 +192,7 @@ class QualityOptimizer:
         Raises:
             RuntimeError: If ffmpeg fails or times out
         """
+        logger.info(f"Running ffmpeg: {' '.join(cmd)}")
         try:
             process = subprocess.Popen(
                 cmd,
@@ -213,9 +203,15 @@ class QualityOptimizer:
             # Wait for completion with timeout
             _, stderr = process.communicate(timeout=Config.MAX_OPTIMIZATION_TIME_SECONDS)
             if process.returncode != 0:
-                raise RuntimeError(f"FFmpeg error: {stderr[:500]}")
+                # Extract only the error lines (skip ffmpeg banner)
+                error_lines = [line for line in stderr.split('\n') if line.strip() and not line.startswith('ffmpeg') and not line.startswith('built') and not line.startswith('configuration') and not line.startswith('  ')]
+                error_msg = '\n'.join(error_lines[-5:]) if error_lines else stderr[-500:]
+                logger.error(f"FFmpeg failed (code {process.returncode}): {error_msg}")
+                raise RuntimeError(f"FFmpeg error: {error_msg}")
+            logger.info("FFmpeg completed successfully")
         except subprocess.TimeoutExpired:
             process.kill()
+            logger.error("FFmpeg timed out")
             raise RuntimeError("Optimization timed out")
 
     def _is_already_optimized(self, file_path: str, format_type: str) -> bool:

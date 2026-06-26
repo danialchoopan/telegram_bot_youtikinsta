@@ -127,11 +127,13 @@ class QueueWorker:
 
             # Record original file size
             original_size = os.path.getsize(file_path)
+            height = info.get("height")
+            quality_label = f"{height}p" if height else "audio"
             self.db.update_download(
                 download_id,
                 status="optimizing",
                 original_size_mb=round(original_size / (1024 * 1024), 2),
-                original_quality=f"{info.get('height', 'audio')}p",
+                original_quality=quality_label,
             )
 
             # Stage 2: Optimize
@@ -245,7 +247,7 @@ class QueueWorker:
 
     def _get_quality_label(self, file_path: str, info: dict) -> str:
         """Determine quality label from video height."""
-        height = info.get("height", 0)
+        height = info.get("height") or 0
         if height >= 1080:
             return "1080p"
         elif height >= 720:
