@@ -37,7 +37,9 @@ class QueueWorker:
         self.current_task = None
 
     async def start(self):
+        """Start the background processing loop."""
         self.running = True
+        self._loop = asyncio.get_event_loop()
         asyncio.create_task(self._process_loop())
 
     async def stop(self):
@@ -159,7 +161,7 @@ class QueueWorker:
             self.current_task = None
 
     def _on_download_progress(self, data: dict, ctx: dict):
-        """Update progress message during download (non-blocking)."""
+        """Update progress message during download (runs in thread)."""
         if data["stage"] != "downloading":
             return
 
@@ -176,10 +178,12 @@ class QueueWorker:
             speed_mb = round(speed / (1024 * 1024), 1) if speed else 0
             text = f"📥 Downloading... {pct}%\n{format_size(current)} / {format_size(total)}\n⚡ {speed_mb} MB/s"
 
-            # Schedule the edit (non-blocking)
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._safe_edit(ctx["user_id"], msg_id, text))
+            # Use stored loop reference (safe from worker thread)
+            if hasattr(self, '_loop') and self._loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self._safe_edit(ctx["user_id"], msg_id, text),
+                    self._loop,
+                )
 
     async def _send_file(self, user_id: int, file_path: str, info: dict, format_type: str, original_size: int, optimized_size: int):
         """Send the file to user with long timeout."""
