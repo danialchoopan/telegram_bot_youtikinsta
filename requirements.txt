@@ -3,6 +3,7 @@ yt-dlp>=2024.1.1
 aiofiles>=23.2.1
 python-dotenv>=1.0.0
 Pillow>=10.0.0
+pysocks>=1.7.1
 
 # Testing
 pytest>=7.4.0

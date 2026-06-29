@@ -39,6 +39,9 @@ class MediaAnalyzer:
             "no_warnings": True,    # Suppress warnings
             "skip_download": True,  # Only extract info, don't download
         }
+        # Add proxy if configured
+        if Config.DOWNLOAD_PROXY:
+            self.ydl_opts["proxy"] = Config.DOWNLOAD_PROXY
 
     def get_info(self, url: str) -> dict:
         """

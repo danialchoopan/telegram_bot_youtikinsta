@@ -130,11 +130,10 @@ class QualityOptimizer:
                 "-crf", "21",
                 "-maxrate", "6M",
                 "-bufsize", "12M",
-                "-vf", "scale=min(1920,iw):-2",
                 output_path,
             ]
         else:
-            # MP4 settings optimized for Telegram (compatible with older ffmpeg)
+            # MP4 settings optimized for Telegram
             cmd = [
                 self.ffmpeg, "-y", "-i", input_path,
                 "-vcodec", "libx264",
@@ -144,7 +143,6 @@ class QualityOptimizer:
                 "-crf", "23",
                 "-maxrate", f"{Config.VIDEO_BITRATE_MBPS}M",
                 "-bufsize", f"{Config.VIDEO_BITRATE_MBPS * 2}M",
-                "-vf", "scale=min(1920,iw):-2",
                 output_path,
             ]
 

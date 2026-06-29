@@ -352,7 +352,19 @@ def main():
 
     # Build the Telegram application
     logger.info("Building Telegram application...")
-    app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).build()
+
+    # Build with proxy if configured
+    if Config.TELEGRAM_PROXY:
+        logger.info(f"Using proxy: {Config.TELEGRAM_PROXY}")
+        app = (
+            ApplicationBuilder()
+            .token(Config.TELEGRAM_BOT_TOKEN)
+            .proxy(Config.TELEGRAM_PROXY)
+            .get_updates_proxy(Config.TELEGRAM_PROXY)
+            .build()
+        )
+    else:
+        app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).build()
 
     # Register all command handlers
     logger.info("Registering handlers...")

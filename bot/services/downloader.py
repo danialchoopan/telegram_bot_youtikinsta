@@ -112,6 +112,10 @@ class Downloader:
             "merge_output_format": "mp4",
         }
 
+        # Add proxy if configured
+        if Config.DOWNLOAD_PROXY:
+            base_opts["proxy"] = Config.DOWNLOAD_PROXY
+
         # MP3: Extract audio and convert to MP3
         if format_type == "mp3":
             return {
