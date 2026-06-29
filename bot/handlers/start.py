@@ -21,12 +21,14 @@ Handlers:
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
+from bot.config import Config
 from bot.database import Database
 from bot.utils.messages import get_message
 
 # Welcome message shown on /start
 MESSAGES_START = {
     "welcome": "👋 Welcome to Media Downloader Bot!\n\nSend me a link from YouTube, Instagram, or TikTok and I'll download it for you.\n\nChoose your language:",
+    "welcome_admin": "👋 Welcome back boss!\n\nI'm ready to serve. Send me a link to download.\n\nChoose your language:",
 }
 
 
@@ -35,12 +37,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Handle /start command.
 
     Creates or retrieves user record and shows language selection.
+    Shows special message for admin user.
     """
     db = Database()
     user = update.effective_user
 
     # Register user in database (or update last activity)
     db.get_or_create_user(user.id, user.username, user.full_name)
+
+    # Check if user is admin
+    is_admin = user.id == Config.ADMIN_USER_ID or db.is_admin(user.id)
+
+    # Auto-promote if matches admin ID
+    if user.id == Config.ADMIN_USER_ID and not db.is_admin(user.id):
+        db.set_admin(user.id, True)
 
     # Create language selection keyboard
     keyboard = [
@@ -51,8 +61,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Send welcome message with language buttons
-    await update.message.reply_text(MESSAGES_START["welcome"], reply_markup=reply_markup)
+    # Send appropriate welcome message
+    if is_admin:
+        await update.message.reply_text(MESSAGES_START["welcome_admin"], reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(MESSAGES_START["welcome"], reply_markup=reply_markup)
 
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

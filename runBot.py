@@ -23,10 +23,18 @@ Author: MiMoCode
 
 import os
 import sys
+import asyncio
 import shutil
 import logging
 import subprocess
 from pathlib import Path
+
+# Fix for Python 3.12+ where no default event loop exists
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 # Ensure the project root is in the Python path
 PROJECT_ROOT = Path(__file__).resolve().parent
