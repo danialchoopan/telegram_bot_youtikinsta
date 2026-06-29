@@ -158,6 +158,44 @@ setup_env() {
             sed -i "s/ADMIN_USER_ID=.*/ADMIN_USER_ID=$ADMIN_UID/" "$ENV_FILE"
         fi
 
+        # Proxy configuration
+        echo ""
+        echo -e "${YELLOW}Do you need a proxy to access Telegram/YouTube? (y/N)${NC}"
+        echo -e "${YELLOW}Default: No proxy${NC}"
+        read -p "Use proxy? " USE_PROXY
+        if [[ "$USE_PROXY" == "y" || "$USE_PROXY" == "Y" ]]; then
+            echo ""
+            read -p "Proxy address (e.g. socks5://127.0.0.1:10808): " PROXY_ADDR
+            if [[ -n "$PROXY_ADDR" ]]; then
+                sed -i "s|TELEGRAM_PROXY=.*|TELEGRAM_PROXY=$PROXY_ADDR|" "$ENV_FILE"
+                sed -i "s|DOWNLOAD_PROXY=.*|DOWNLOAD_PROXY=$PROXY_ADDR|" "$ENV_FILE"
+            fi
+        else
+            sed -i "s|TELEGRAM_PROXY=.*|TELEGRAM_PROXY=|" "$ENV_FILE"
+            sed -i "s|DOWNLOAD_PROXY=.*|DOWNLOAD_PROXY=|" "$ENV_FILE"
+        fi
+
+        # Max resolution
+        echo ""
+        read -p "Max resolution (default 1080): " MAX_RES
+        if [[ -n "$MAX_RES" ]]; then
+            sed -i "s/MAX_RESOLUTION=.*/MAX_RESOLUTION=$MAX_RES/" "$ENV_FILE"
+        fi
+
+        # Daily download limit
+        read -p "Max downloads per user per day (default 10): " DAILY_LIMIT
+        if [[ -n "$DAILY_LIMIT" ]]; then
+            sed -i "s/MAX_DAILY_DOWNLOADS_PER_USER=.*/MAX_DAILY_DOWNLOADS_PER_USER=$DAILY_LIMIT/" "$ENV_FILE"
+        fi
+
+        # Enable 4K blocking
+        echo ""
+        echo -e "${YELLOW}Block 4K downloads? (Y/n)${NC}"
+        read -p "Block 4K: " BLOCK_4K
+        if [[ "$BLOCK_4K" == "n" || "$BLOCK_4K" == "N" ]]; then
+            sed -i "s/ENABLE_4K_BLOCKING=.*/ENABLE_4K_BLOCKING=false/" "$ENV_FILE"
+        fi
+
         print_success ".env file configured"
     else
         print_warning ".env file already exists, skipping configuration"

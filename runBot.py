@@ -220,6 +220,15 @@ def setup_wizard():
     print("   Send /start to @userinfobot on Telegram to get your user ID")
     admin_user_id = input("   Enter admin user ID (chat ID): ").strip()
 
+    # Step 5: Proxy configuration
+    print("\n📋 Step 5: Proxy Configuration")
+    print("   Do you need a proxy to access Telegram/YouTube?")
+    use_proxy = input("   Use proxy? (y/N): ").strip().lower()
+
+    proxy_addr = ""
+    if use_proxy == "y":
+        proxy_addr = input("   Proxy address (e.g. socks5://127.0.0.1:10808): ").strip()
+
     # Update .env file line by line
     with open(env_file, "r") as f:
         lines = f.readlines()
@@ -230,6 +239,10 @@ def setup_wizard():
             new_lines.append(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
         elif line.startswith("ADMIN_USER_ID=") and admin_user_id:
             new_lines.append(f"ADMIN_USER_ID={admin_user_id}\n")
+        elif line.startswith("TELEGRAM_PROXY="):
+            new_lines.append(f"TELEGRAM_PROXY={proxy_addr}\n")
+        elif line.startswith("DOWNLOAD_PROXY="):
+            new_lines.append(f"DOWNLOAD_PROXY={proxy_addr}\n")
         else:
             new_lines.append(line)
 

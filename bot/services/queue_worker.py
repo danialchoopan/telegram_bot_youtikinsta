@@ -44,8 +44,16 @@ class QueueWorker:
         self.running = False
 
     async def _process_loop(self):
+        """Main loop: process queue items and clean up temp files periodically."""
+        cleanup_counter = 0
         while self.running:
             try:
+                # Clean temp files every 60 iterations (~2 minutes)
+                cleanup_counter += 1
+                if cleanup_counter >= 60:
+                    cleanup_counter = 0
+                    self._cleanup_old_files()
+
                 item = self.db.get_next_queue_item()
                 if item:
                     await self._process_item(item)
@@ -233,3 +241,21 @@ class QueueWorker:
                 self._cleanup(file_path)
         except Exception:
             pass
+
+    def _cleanup_old_files(self):
+        """Remove files older than 30 minutes from temp directories."""
+        import time
+        now = time.time()
+        max_age = 30 * 60  # 30 minutes
+
+        for dir_path in [Config.DOWNLOAD_PATH, Config.OPTIMIZED_PATH]:
+            try:
+                if not dir_path.exists():
+                    continue
+                for f in dir_path.iterdir():
+                    if f.is_file() and f.suffix != ".gitkeep":
+                        if now - f.stat().st_mtime > max_age:
+                            f.unlink()
+                            logger.info(f"Cleaned old file: {f.name}")
+            except Exception as e:
+                logger.error(f"Cleanup error in {dir_path}: {e}")

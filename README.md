@@ -12,11 +12,14 @@ A Telegram bot for downloading videos from YouTube, Instagram, and TikTok in var
 - **Format selection**: MP4, MKV, MP3, M4A output formats
 - **4K blocking**: Automatically blocks 4K/8K downloads to save bandwidth
 - **Telegram optimization**: H.264/AAC codec, max 1080p, compressed for Telegram's limits
-- **Queue system**: Handles concurrent users with priority-based queuing
+- **Smart queue system**: Priority-based queuing with real-time progress
+- **Whitelist mode**: Only allowed users can use the bot (admin toggles on/off)
 - **Bilingual interface**: Persian (Farsi) and English support
 - **User preferences**: Customizable default format, quality, and language
-- **Admin dashboard**: User management, ban system, quality statistics
-- **Real-time progress**: Multi-stage progress updates during download/optimization
+- **Admin dashboard**: Full inline keyboard panel (stats, users, bans, settings)
+- **Real-time progress**: Single-message progress updates (downloading → optimizing → uploading)
+- **Proxy support**: SOCKS5/HTTP proxy for Telegram and downloads
+- **Auto-cleanup**: Temp files deleted after upload and periodically
 - **SQLite database**: Tracks users, downloads, queue, and quality statistics
 
 ## Quick Start (Ubuntu Server)
@@ -38,8 +41,10 @@ The setup script will:
 2. Create a virtual environment
 3. Install Python packages
 4. Prompt you for your Telegram bot token and admin user ID
-5. Set up systemd service for auto-start
-6. Start the bot
+5. Ask if you need a proxy (for restricted regions)
+6. Configure max resolution, daily limits, and 4K blocking
+7. Set up systemd service for auto-start
+8. Start the bot
 
 ### After Setup
 
@@ -232,16 +237,51 @@ You can pass environment variables in three ways:
      - ADMIN_USER_ID=123456789
    ```
 
+## Proxy Configuration
+
+If you need a proxy to access Telegram or YouTube (e.g., in restricted regions):
+
+Edit `.env`:
+```env
+# SOCKS5 proxy (recommended)
+TELEGRAM_PROXY=socks5://127.0.0.1:10808
+DOWNLOAD_PROXY=socks5://127.0.0.1:10808
+
+# Or HTTP proxy
+TELEGRAM_PROXY=http://127.0.0.1:8080
+DOWNLOAD_PROXY=http://127.0.0.1:8080
+
+# Leave empty for no proxy
+TELEGRAM_PROXY=
+DOWNLOAD_PROXY=
+```
+
+For SOCKS5 proxy, install extra dependency:
+```bash
+pip install "python-telegram-bot[socks]" pysocks socksio
+```
+
 ## Bot Commands
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/start` | Start the bot and select language | All users |
+| `/start` | Start the bot, select language, admin panel | All users |
 | `/settings` | View and change preferences | All users |
-| `/admin_stats` | View bot statistics | Admin only |
-| `/addallow <user_id>` | Add user to allowed list | Admin only |
-| `/ban <user_id> [hours]` | Ban a user | Admin only |
-| `/setadmin <user_id>` | Grant admin access | Admin only |
+
+All admin features are available through the **Admin Panel** (inline keyboard) after `/start`.
+
+## Whitelist Mode
+
+By default, everyone can use the bot. Admin can enable whitelist mode:
+
+1. Open Admin Panel (`/start` → 🔧 Admin Panel)
+2. Tap "🔒 Turn On Whitelist"
+3. Tap "➕ Whitelist User" → select users
+
+When whitelist is ON:
+- Only whitelisted users can download
+- Admin is always whitelisted
+- Non-whitelisted users see "Access denied"
 
 ## Configuration
 
