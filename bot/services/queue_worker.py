@@ -205,12 +205,16 @@ class QueueWorker:
 
         try:
             # Send as audio or video based on format
+            # Use long timeouts for slow internet connections
+            timeout_kwargs = {"read_timeout": 300, "write_timeout": 300, "connect_timeout": 30}
+
             if format_type in ("mp3", "m4a"):
                 with open(file_path, "rb") as f:
                     await self.app.bot.send_audio(
                         user_id, f,
                         title=title,
-                        caption=caption[:1024],  # Telegram caption limit
+                        caption=caption[:1024],
+                        **timeout_kwargs,
                     )
             else:
                 with open(file_path, "rb") as f:
@@ -218,12 +222,22 @@ class QueueWorker:
                         user_id, f,
                         caption=caption[:1024],
                         supports_streaming=True,
+                        **timeout_kwargs,
                     )
         except Exception as e:
             # Fallback to document if video/audio upload fails
             logger.error(f"Send failed: {e}")
-            with open(file_path, "rb") as f:
-                await self.app.bot.send_document(user_id, f, caption=caption[:1024])
+            try:
+                with open(file_path, "rb") as f:
+                    await self.app.bot.send_document(
+                        user_id, f,
+                        caption=caption[:1024],
+                        read_timeout=300,
+                        write_timeout=300,
+                    )
+            except Exception as e2:
+                logger.error(f"Fallback send also failed: {e2}")
+                raise
 
     async def _send_progress(self, user_id: int, text: str, lang: str = "en"):
         """Send progress message to user."""
