@@ -45,7 +45,7 @@ class Config:
     # ==========================================
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
     # Admin user's Telegram chat ID (user_id), not username
-    ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
+    ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0")) if os.getenv("ADMIN_USER_ID", "0").isdigit() else 0
     # Proxy for Telegram API (e.g. socks5://127.0.0.1:10808 or http://127.0.0.1:10808)
     TELEGRAM_PROXY = os.getenv("TELEGRAM_PROXY", "")
     # Proxy for yt-dlp downloads (e.g. socks5://127.0.0.1:10808)
