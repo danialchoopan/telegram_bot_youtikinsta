@@ -54,6 +54,11 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = db.get_user(user.id)
     lang = user_data.get("language", "en") if user_data else "en"
 
+    # Check whitelist
+    if not db.can_use_bot(user.id):
+        await update.message.reply_text("⛔ Access denied. You are not whitelisted.\nAsk admin to add you.")
+        return
+
     # Check if user can download (not banned, within daily limit)
     if not db.can_download(user.id):
         used = db.get_daily_download_count(user.id)

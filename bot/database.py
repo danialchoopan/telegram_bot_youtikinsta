@@ -159,6 +159,12 @@ class Database:
                     avg_optimization_time_seconds REAL,
                     last_used DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
+
+                -- Bot settings (key-value store)
+                CREATE TABLE IF NOT EXISTS bot_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
             """)
 
     # ==========================================
@@ -457,6 +463,63 @@ class Database:
                     "INSERT INTO quality_stats (resolution, format, count, avg_file_size_mb, avg_optimization_time_seconds) VALUES (?, ?, 1, ?, ?)",
                     (resolution, fmt, file_size_mb, opt_time),
                 )
+
+    # ==========================================
+    # Bot Settings (key-value store)
+    # ==========================================
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        """Get a bot setting value."""
+        with self._cursor() as cur:
+            cur.execute("SELECT value FROM bot_settings WHERE key = ?", (key,))
+            row = cur.fetchone()
+            return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        """Set a bot setting value."""
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+
+    def is_whitelist_enabled(self) -> bool:
+        """Check if whitelist mode is enabled."""
+        return self.get_setting("whitelist_enabled", "false") == "true"
+
+    def toggle_whitelist(self) -> bool:
+        """Toggle whitelist mode on/off. Returns new state."""
+        current = self.is_whitelist_enabled()
+        new_state = "false" if current else "true"
+        self.set_setting("whitelist_enabled", new_state)
+        return not current
+
+    def is_user_whitelisted(self, user_id: int) -> bool:
+        """Check if user is whitelisted or is admin."""
+        if self.is_admin(user_id):
+            return True
+        return self.get_setting(f"whitelisted_{user_id}", "false") == "true"
+
+    def add_to_whitelist(self, user_id: int):
+        """Add user to whitelist."""
+        self.set_setting(f"whitelisted_{user_id}", "true")
+
+    def remove_from_whitelist(self, user_id: int):
+        """Remove user from whitelist."""
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM bot_settings WHERE key = ?", (f"whitelisted_{user_id}",))
+
+    def get_whitelisted_users(self) -> list:
+        """Get all whitelisted user IDs."""
+        with self._cursor() as cur:
+            cur.execute("SELECT key FROM bot_settings WHERE key LIKE 'whitelisted_%' AND value = 'true'")
+            return [int(row["key"].replace("whitelisted_", "")) for row in cur.fetchall()]
+
+    def can_use_bot(self, user_id: int) -> bool:
+        """Check if user can use the bot (whitelist check)."""
+        if not self.is_whitelist_enabled():
+            return True
+        return self.is_user_whitelisted(user_id)
 
     def get_bot_stats(self) -> dict:
         """

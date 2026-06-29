@@ -80,6 +80,8 @@ async def _show_panel(query, user_id: int, edit: bool = True):
     """Show main admin dashboard."""
     db = Database()
     stats = db.get_bot_stats()
+    wl_on = db.is_whitelist_enabled()
+    wl_count = len(db.get_whitelisted_users())
 
     text = (
         f"🔧 Admin Panel\n━━━━━━━━━━━━━━━━━━━\n\n"
@@ -88,8 +90,11 @@ async def _show_panel(query, user_id: int, edit: bool = True):
         f"💾 Data: {stats['total_size_gb']} GB\n"
         f"🔄 Queue: {stats['active_queue']} items\n"
         f"📈 Success: {stats['success_rate']}%\n"
-        f"🚫 4K Blocked: {stats.get('blocked_4k', 0)}"
+        f"🚫 4K Blocked: {stats.get('blocked_4k', 0)}\n\n"
+        f"🔒 Whitelist: {'✅ ON' if wl_on else '❌ OFF'} ({wl_count} users)"
     )
+
+    wl_btn = "🔓 Turn Off Whitelist" if wl_on else "🔒 Turn On Whitelist"
 
     kb = [
         [InlineKeyboardButton("📊 Stats", callback_data="adm_stats"),
@@ -100,6 +105,9 @@ async def _show_panel(query, user_id: int, edit: bool = True):
          InlineKeyboardButton("✅ Unban User", callback_data="adm_unban")],
         [InlineKeyboardButton("👑 Set Admin", callback_data="adm_setadmin"),
          InlineKeyboardButton("🗑️ Clear Queue", callback_data="adm_clearqueue")],
+        [InlineKeyboardButton(wl_btn, callback_data="adm_toggle_wl")],
+        [InlineKeyboardButton("➕ Whitelist User", callback_data="adm_wl_add"),
+         InlineKeyboardButton("➖ Remove from WL", callback_data="adm_wl_remove")],
     ]
 
     if edit:
@@ -418,6 +426,90 @@ async def clearqueue_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ==========================================
+# Whitelist Management
+# ==========================================
+
+async def toggle_whitelist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    db = Database()
+    new_state = db.toggle_whitelist()
+    state_text = "✅ Whitelist enabled" if new_state else "🔓 Whitelist disabled"
+    await query.edit_message_text(state_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="admin_panel")]]))
+
+
+async def wl_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    db = Database()
+    with db._cursor() as cur:
+        cur.execute("SELECT user_id, username, full_name FROM users WHERE is_admin = 0 ORDER BY last_activity DESC LIMIT 10")
+        users = cur.fetchall()
+
+    if not users:
+        return await query.edit_message_text("No users to whitelist.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="admin_panel")]]))
+
+    kb = []
+    for u in users:
+        name = u["full_name"] or u["username"] or str(u["user_id"])
+        wl = " ✅" if db.is_user_whitelisted(u["user_id"]) else ""
+        kb.append([InlineKeyboardButton(f"{name[:15]}{wl}", callback_data=f"adm_dowladd_{u['user_id']}")])
+    kb.append([InlineKeyboardButton("← Back", callback_data="admin_panel")])
+
+    await query.edit_message_text("➕ Select user to whitelist:", reply_markup=InlineKeyboardMarkup(kb))
+
+
+async def do_wl_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    target_id = int(query.data.replace("adm_dowladd_", ""))
+    Database().add_to_whitelist(target_id)
+    await query.edit_message_text(f"✅ User {target_id} added to whitelist.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="admin_panel")]]))
+
+
+async def wl_remove_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    db = Database()
+    wl_users = db.get_whitelisted_users()
+
+    if not wl_users:
+        return await query.edit_message_text("No whitelisted users.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="admin_panel")]]))
+
+    kb = []
+    for uid in wl_users:
+        user = db.get_user(uid)
+        name = (user.get("full_name") or user.get("username") or str(uid)) if user else str(uid)
+        kb.append([InlineKeyboardButton(f"❌ {name[:15]}", callback_data=f"adm_dowlrm_{uid}")])
+    kb.append([InlineKeyboardButton("← Back", callback_data="admin_panel")])
+
+    await query.edit_message_text("➖ Select user to remove from whitelist:", reply_markup=InlineKeyboardMarkup(kb))
+
+
+async def do_wl_remove_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    target_id = int(query.data.replace("adm_dowlrm_", ""))
+    Database().remove_from_whitelist(target_id)
+    await query.edit_message_text(f"❌ User {target_id} removed from whitelist.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="admin_panel")]]))
+
+
+# ==========================================
 # Register handlers
 # ==========================================
 
@@ -441,4 +533,10 @@ def get_handlers():
         CallbackQueryHandler(setadmin_callback, pattern=r"^adm_setadmin$"),
         CallbackQueryHandler(do_setadmin_callback, pattern=r"^adm_dosetadmin_"),
         CallbackQueryHandler(clearqueue_callback, pattern=r"^adm_clearqueue$"),
+        # Whitelist
+        CallbackQueryHandler(toggle_whitelist_callback, pattern=r"^adm_toggle_wl$"),
+        CallbackQueryHandler(wl_add_callback, pattern=r"^adm_wl_add$"),
+        CallbackQueryHandler(do_wl_add_callback, pattern=r"^adm_dowladd_"),
+        CallbackQueryHandler(wl_remove_callback, pattern=r"^adm_wl_remove$"),
+        CallbackQueryHandler(do_wl_remove_callback, pattern=r"^adm_dowlrm_"),
     ]
