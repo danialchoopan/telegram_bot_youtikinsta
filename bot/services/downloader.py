@@ -40,28 +40,40 @@ class Downloader:
         Config.ensure_directories()
 
     def download(self, url: str, format_type: str, progress_callback=None, platform: str = "youtube") -> tuple[str, dict]:
-        """Download media from URL."""
+        """Download media from URL with retries."""
         logger.info(f"Downloading: {url} as {format_type} (platform: {platform})")
 
         filename = f"dl_{generate_random_string(12)}"
         ydl_opts = self._build_opts(format_type, filename, platform)
 
+        # Increase timeouts for slow proxies
+        ydl_opts["socket_timeout"] = 60
+        ydl_opts["retries"] = 5
+        ydl_opts["fragment_retries"] = 5
+        ydl_opts["http_chunk_size"] = 1048576  # 1MB chunks
+
         if progress_callback:
             ydl_opts["progress_hooks"] = [lambda d: self._progress_hook(d, progress_callback)]
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                file_path = self._find_file(filename)
-                if not file_path:
-                    raise FileNotFoundError("Downloaded file not found")
-                logger.info(f"Download complete: {file_path}")
-                return file_path, info
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            # Cleanup on failure
-            self._cleanup(filename)
-            raise
+        last_error = None
+        for attempt in range(3):
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    file_path = self._find_file(filename)
+                    if not file_path:
+                        raise FileNotFoundError("Downloaded file not found")
+                    logger.info(f"Download complete: {file_path}")
+                    return file_path, info
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Download attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    import time
+                    time.sleep(2)
+
+        self._cleanup(filename)
+        raise last_error
 
     def get_info_only(self, url: str) -> dict:
         """
