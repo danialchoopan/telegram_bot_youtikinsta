@@ -113,10 +113,16 @@ class QueueWorker:
                 title=title,
             )
 
-            # Stage 2: Optimize
-            optimized_path = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.optimizer.optimize(file_path, format_type)
-            )
+            # Stage 2: Optimize (skip for video — just send as-is)
+            if format_type in ("mp3", "m4a"):
+                # Only run ffmpeg for audio extraction
+                optimized_path = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self.optimizer.optimize(file_path, format_type)
+                )
+            else:
+                # Video: skip ffmpeg, send file directly
+                optimized_path = file_path
+                logger.info("Skipping ffmpeg for video — sending directly")
 
             optimized_size = os.path.getsize(optimized_path)
 
@@ -136,14 +142,21 @@ class QueueWorker:
 
             # Update message: done
             if msg_id:
-                reduction = round((1 - optimized_size / original_size) * 100, 1) if original_size > 0 else 0
-                title = info.get("title", "media")[:30]
-                done_text = (
-                    f"✅ Done!\n\n"
-                    f"📁 {title}\n"
-                    f"📦 {format_size(original_size)} → {format_size(optimized_size)} ({reduction}% smaller)\n"
-                    f"🎥 {self._get_quality_label(optimized_path, info)}"
-                )
+                if optimized_path == file_path:
+                    done_text = (
+                        f"✅ Done! (sent directly, no ffmpeg)\n\n"
+                        f"📁 {info.get('title', 'media')[:30]}\n"
+                        f"📦 {format_size(original_size)}\n"
+                        f"🎥 {self._get_quality_label(optimized_path, info)}"
+                    )
+                else:
+                    reduction = round((1 - optimized_size / original_size) * 100, 1) if original_size > 0 else 0
+                    done_text = (
+                        f"✅ Done!\n\n"
+                        f"📁 {info.get('title', 'media')[:30]}\n"
+                        f"📦 {format_size(original_size)} → {format_size(optimized_size)} ({reduction}% smaller)\n"
+                        f"🎥 {self._get_quality_label(optimized_path, info)}"
+                    )
                 await self._safe_edit(user_id, msg_id, done_text)
 
             # Stage 4: Update records
@@ -151,8 +164,11 @@ class QueueWorker:
             self.db.increment_user_downloads(user_id, round(optimized_size / (1024 * 1024), 2))
             self.db.update_queue_status(queue_id, "completed")
 
-            # Stage 5: Cleanup
-            self._cleanup(file_path, optimized_path)
+            # Stage 5: Cleanup (don't delete same file twice)
+            if optimized_path != file_path:
+                self._cleanup(file_path, optimized_path)
+            else:
+                self._cleanup(file_path)
 
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
