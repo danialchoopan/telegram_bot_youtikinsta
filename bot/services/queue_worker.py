@@ -82,6 +82,9 @@ class QueueWorker:
         progress_msg = await self._safe_send(user_id, "📥 Preparing download...")
         msg_id = progress_msg.message_id if progress_msg else None
 
+        file_path = None
+        optimized_path = None
+
         try:
             # Stage 1: Download with progress hook
             download_progress = {"msg_id": msg_id, "user_id": user_id, "lang": lang}
@@ -163,7 +166,8 @@ class QueueWorker:
                 await self._safe_edit(user_id, msg_id, f"❌ Error:\n{error_msg[:500]}")
             else:
                 await self._safe_send(user_id, f"❌ Error: {str(e)[:200]}")
-            self._cleanup_files(item)
+            # Cleanup any files that were created
+            self._cleanup(file_path, optimized_path)
 
         finally:
             self.current_task = None
@@ -215,8 +219,12 @@ class QueueWorker:
                     await self.app.bot.send_video(user_id, f, supports_streaming=True, **timeout)
         except Exception as e:
             logger.error(f"Send failed: {e}, trying document fallback")
-            with open(file_path, "rb") as f:
-                await self.app.bot.send_document(user_id, f, read_timeout=300, write_timeout=300)
+            try:
+                with open(file_path, "rb") as f:
+                    await self.app.bot.send_document(user_id, f, caption=title[:100], read_timeout=300, write_timeout=300)
+            except Exception as e2:
+                logger.error(f"Document fallback also failed: {e2}")
+                raise
 
     async def _safe_send(self, user_id: int, text: str):
         """Send message, return message object or None."""

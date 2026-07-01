@@ -41,6 +41,7 @@ class Downloader:
 
     def download(self, url: str, format_type: str, progress_callback=None, platform: str = "youtube") -> tuple[str, dict]:
         """Download media from URL with retries."""
+        import time as _time
         logger.info(f"Downloading: {url} as {format_type} (platform: {platform})")
 
         filename = f"dl_{generate_random_string(12)}"
@@ -68,11 +69,11 @@ class Downloader:
             except Exception as e:
                 last_error = e
                 logger.warning(f"Download attempt {attempt + 1}/3 failed: {e}")
+                # Clean up partial files before retry
+                self._cleanup(filename)
                 if attempt < 2:
-                    import time
-                    time.sleep(2)
+                    _time.sleep(2)
 
-        self._cleanup(filename)
         raise last_error
 
     def get_info_only(self, url: str) -> dict:
