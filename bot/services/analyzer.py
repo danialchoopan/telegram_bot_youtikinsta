@@ -145,6 +145,8 @@ class MediaAnalyzer:
         options = []
         capped_height = min(max_height, Config.MAX_RESOLUTION) if Config.ENABLE_4K_BLOCKING else max_height
 
+        options.append(("best", "⚡ Download Full Quality"))
+
         if capped_height >= 1080:
             options.append(("mp4", "📹 MP4 1080p"))
             options.append(("mkv", "🎬 MKV 1080p"))
@@ -153,7 +155,6 @@ class MediaAnalyzer:
 
         options.append(("mp3", "🎵 MP3 Audio"))
         options.append(("m4a", "🎶 M4A Audio"))
-        options.append(("best", "⚡ Best for Telegram"))
 
         return options
 
