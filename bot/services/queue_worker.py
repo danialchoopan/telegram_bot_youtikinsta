@@ -169,13 +169,21 @@ class QueueWorker:
             self.current_task = None
 
     def _on_download_progress(self, data: dict, ctx: dict):
-        """Update progress message during download (runs in thread)."""
+        """Update progress message during download (runs in thread, throttled to 2s)."""
         if data["stage"] != "downloading":
             return
 
         msg_id = ctx.get("msg_id")
         if not msg_id:
             return
+
+        # Throttle: only update every 2 seconds to avoid Telegram rate limits
+        import time
+        now = time.time()
+        last_edit = ctx.get("last_edit", 0)
+        if now - last_edit < 2:
+            return
+        ctx["last_edit"] = now
 
         total = data.get("total", 0)
         current = data.get("current", 0)
@@ -218,11 +226,17 @@ class QueueWorker:
             return None
 
     async def _safe_edit(self, user_id: int, msg_id: int, text: str):
-        """Edit message, silently ignore if fails."""
+        """Edit message, handle rate limits gracefully."""
         try:
             await self.app.bot.edit_message_text(text, user_id, msg_id)
-        except Exception:
-            pass
+        except Exception as e:
+            # If rate limited, wait and retry once
+            if "429" in str(e) or "Too Many" in str(e):
+                await asyncio.sleep(3)
+                try:
+                    await self.app.bot.edit_message_text(text, user_id, msg_id)
+                except Exception:
+                    pass
 
     def _get_user_lang(self, user_id: int) -> str:
         user = self.db.get_user(user_id)

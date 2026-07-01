@@ -12,15 +12,19 @@ A Telegram bot for downloading videos from YouTube, Instagram, and TikTok in var
 - **Format selection**: MP4, MKV, MP3, M4A output formats
 - **4K blocking**: Automatically blocks 4K/8K downloads to save bandwidth
 - **Telegram optimization**: H.264/AAC codec, max 1080p, compressed for Telegram's limits
-- **Smart queue system**: Priority-based queuing with real-time progress
+- **Smart queue system**: Priority-based queuing with real-time progress (throttled to 2s)
 - **Whitelist mode**: Only allowed users can use the bot (admin toggles on/off)
 - **Bilingual interface**: Persian (Farsi) and English support
 - **User preferences**: Customizable default format, quality, and language
-- **Admin dashboard**: Full inline keyboard panel (stats, users, bans, settings)
+- **Admin dashboard**: Reply keyboard with all settings as selectable buttons
 - **Real-time progress**: Single-message progress updates (downloading → optimizing → uploading)
 - **Proxy support**: SOCKS5/HTTP proxy for Telegram and downloads
 - **Auto-cleanup**: Temp files deleted after upload and periodically
 - **SQLite database**: Tracks users, downloads, queue, and quality statistics
+- **Download history**: Shows video titles and file sizes
+- **Admin unlimited**: Admins bypass all download limits
+- **Retry logic**: Auto-retries failed downloads up to 3 times
+- **Hardware acceleration**: Uses CUDA/QSV/VAAPI when available
 
 ## Quick Start (Ubuntu Server)
 
