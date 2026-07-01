@@ -113,16 +113,26 @@ class QueueWorker:
                 title=title,
             )
 
-            # Stage 2: Optimize (skip for video — just send as-is)
+            # Stage 2: Optimize
+            MAX_BOT_SIZE = 50 * 1024 * 1024  # 50MB Telegram bot limit
+
             if format_type in ("mp3", "m4a"):
-                # Only run ffmpeg for audio extraction
+                # Audio: run ffmpeg for extraction
                 optimized_path = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: self.optimizer.optimize(file_path, format_type)
                 )
+            elif os.path.getsize(file_path) > MAX_BOT_SIZE:
+                # Video too large: compress with ffmpeg
+                if msg_id:
+                    await self._safe_edit(user_id, msg_id, "🔄 File too large, compressing...")
+                logger.info(f"File {format_size(os.path.getsize(file_path))} > 50MB, compressing with ffmpeg")
+                optimized_path = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self.optimizer.optimize(file_path, "best")
+                )
             else:
-                # Video: skip ffmpeg, send file directly
+                # Video under 50MB: send directly
                 optimized_path = file_path
-                logger.info("Skipping ffmpeg for video — sending directly")
+                logger.info("Skipping ffmpeg — sending directly")
 
             optimized_size = os.path.getsize(optimized_path)
 
@@ -262,7 +272,24 @@ class QueueWorker:
                 with open(file_path, "rb") as f:
                     await self.app.bot.send_video(user_id, f, supports_streaming=True, **timeout)
         except Exception as e:
-            logger.error(f"Send failed: {e}, trying document fallback")
+            error_str = str(e)
+            # If file too large, compress and retry
+            if "413" in error_str or "Entity Too Large" in error_str:
+                logger.warning(f"File too large, compressing with ffmpeg...")
+                try:
+                    compressed = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: self.optimizer.optimize(file_path, "best")
+                    )
+                    if compressed != file_path:
+                        with open(compressed, "rb") as f:
+                            await self.app.bot.send_video(user_id, f, supports_streaming=True, read_timeout=300, write_timeout=300)
+                        os.remove(compressed)
+                        return
+                except Exception as e2:
+                    logger.error(f"Compressed send also failed: {e2}")
+
+            # Fallback to document
+            logger.error(f"Send failed: {e}")
             try:
                 with open(file_path, "rb") as f:
                     await self.app.bot.send_document(user_id, f, caption=title[:100], read_timeout=300, write_timeout=300)
