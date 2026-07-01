@@ -24,10 +24,11 @@ from bot.utils.helpers import format_size
 ADMIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("📊 Stats"), KeyboardButton("👥 Users"), KeyboardButton("📥 Downloads")],
-        [KeyboardButton("🎛️ Settings"), KeyboardButton("🚫 Ban"), KeyboardButton("✅ Unban")],
-        [KeyboardButton("➕ Whitelist"), KeyboardButton("➖ Unwhitelist")],
-        [KeyboardButton("👑 Set Admin"), KeyboardButton("🗑️ Clear Queue")],
-        [KeyboardButton("📏 Daily Limit"), KeyboardButton("🔙 Main Menu")],
+        [KeyboardButton("🎛️ Settings"), KeyboardButton("📏 Resolution"), KeyboardButton("🎯 Format")],
+        [KeyboardButton("🚫 4K Block"), KeyboardButton("⚡ Optimize"), KeyboardButton("🎚️ Bitrate")],
+        [KeyboardButton("🚫 Ban"), KeyboardButton("✅ Unban"), KeyboardButton("📏 Daily Limit")],
+        [KeyboardButton("➕ Whitelist"), KeyboardButton("➖ Unwhitelist"), KeyboardButton("👑 Set Admin")],
+        [KeyboardButton("🗑️ Clear Queue"), KeyboardButton("🔙 Main Menu")],
     ],
     resize_keyboard=True,
 )
@@ -38,6 +39,23 @@ NORMAL_KEYBOARD = ReplyKeyboardMarkup([[KeyboardButton("/start")]], resize_keybo
 
 def _is_admin(user_id: int) -> bool:
     return user_id == Config.ADMIN_USER_ID or Database().is_admin(user_id)
+
+
+def _update_env(env_path, key, value):
+    """Update a value in the .env file."""
+    if not env_path.exists():
+        return
+    lines = env_path.read_text().splitlines(keepends=True)
+    with open(env_path, "w") as f:
+        found = False
+        for line in lines:
+            if line.startswith(f"{key}="):
+                f.write(f"{key}={value}\n")
+                found = True
+            else:
+                f.write(line)
+        if not found:
+            f.write(f"{key}={value}\n")
 
 
 # ==========================================
@@ -55,13 +73,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📊 Stats - Bot statistics\n"
             "👥 Users - User list\n"
             "📥 Downloads - History with titles\n"
-            "🎛️ Settings - Quality settings\n"
-            "🚫 Ban / ✅ Unban - User management\n"
+            "🎛️ Settings - Show all settings\n"
+            "📏 Resolution - Toggle 720p/1080p\n"
+            "🎯 Format - Toggle MP4/MKV/MP3\n"
+            "🚫 4K Block - Toggle on/off\n"
+            "⚡ Optimize - Toggle auto-optimize\n"
+            "🎚️ Bitrate - Cycle 2/4/6/8 Mbps\n"
+            "🚫 Ban / ✅ Unban\n"
             "➕ Whitelist / ➖ Unwhitelist\n"
-            "👑 Set Admin - Make user admin\n"
-            "🗑️ Clear Queue - Clear stuck queue\n"
-            "📏 Daily Limit - Set download limits\n"
-            "🔙 Main Menu - Show keyboard\n\n"
+            "👑 Set Admin\n"
+            "🗑️ Clear Queue\n"
+            "📏 Daily Limit - Set download limit\n"
+            "🔙 Main Menu\n\n"
             "📋 Commands:\n"
             "/start - Main menu\n"
             "/settings - Your preferences\n"
@@ -145,9 +168,46 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "📥 Downloads":
         await _send_downloads(update, user_id)
 
-    # Settings
+    # Settings overview
     elif text == "🎛️ Settings":
         await _send_settings(update, user_id)
+
+    # Resolution toggle
+    elif text == "📏 Resolution":
+        new = "720" if Config.MAX_RESOLUTION == 1080 else "1080"
+        Config.MAX_RESOLUTION = int(new)
+        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", new)
+        await update.message.reply_text(f"📏 Resolution: {new}p")
+
+    # Format toggle
+    elif text == "🎯 Format":
+        fmts = ["mp4", "mkv", "mp3"]
+        idx = fmts.index(Config.DEFAULT_FORMAT) if Config.DEFAULT_FORMAT in fmts else 0
+        Config.DEFAULT_FORMAT = fmts[(idx + 1) % len(fmts)]
+        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", Config.DEFAULT_FORMAT)
+        await update.message.reply_text(f"🎯 Format: {Config.DEFAULT_FORMAT.upper()}")
+
+    # 4K Block toggle
+    elif text == "🚫 4K Block":
+        Config.ENABLE_4K_BLOCKING = not Config.ENABLE_4K_BLOCKING
+        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", str(Config.ENABLE_4K_BLOCKING).lower())
+        state = "ON" if Config.ENABLE_4K_BLOCKING else "OFF"
+        await update.message.reply_text(f"🚫 4K Block: {state}")
+
+    # Auto-optimize toggle
+    elif text == "⚡ Optimize":
+        Config.AUTO_OPTIMIZE = not Config.AUTO_OPTIMIZE
+        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", str(Config.AUTO_OPTIMIZE).lower())
+        state = "ON" if Config.AUTO_OPTIMIZE else "OFF"
+        await update.message.reply_text(f"⚡ Auto-Optimize: {state}")
+
+    # Bitrate toggle
+    elif text == "🎚️ Bitrate":
+        rates = [2, 4, 6, 8]
+        idx = rates.index(Config.VIDEO_BITRATE_MBPS) if Config.VIDEO_BITRATE_MBPS in rates else 1
+        Config.VIDEO_BITRATE_MBPS = rates[(idx + 1) % len(rates)]
+        _update_env(Config.BASE_DIR / ".env", "VIDEO_BITRATE_MBPS", str(Config.VIDEO_BITRATE_MBPS))
+        await update.message.reply_text(f"🎚️ Video Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps")
 
     # Ban
     elif text == "🚫 Ban":
@@ -169,6 +229,10 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "👑 Set Admin":
         await _send_setadmin_list(update, user_id)
 
+    # Daily Limit
+    elif text == "📏 Daily Limit":
+        await _send_daily_limit(update, user_id)
+
     # Clear Queue
     elif text == "🗑️ Clear Queue":
         db = Database()
@@ -176,10 +240,6 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
             cur.execute("UPDATE download_queue SET status = 'failed' WHERE status IN ('waiting', 'processing')")
             count = cur.rowcount
         await update.message.reply_text(f"🗑️ Cleared {count} items from queue.")
-
-    # Daily Limit
-    elif text == "📏 Daily Limit":
-        await _send_daily_limit(update, user_id)
 
     # Main Menu
     elif text == "🔙 Main Menu":
@@ -490,7 +550,11 @@ def get_handlers():
         CommandHandler("setlimit", setlimit_command),
         CallbackQueryHandler(language_callback, pattern=r"^lang_"),
         # Admin text commands from reply keyboard
-        MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^🚫 Ban|^✅ Unban|^➕ Whitelist|^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^📏 Daily Limit|^🔙 Main Menu$"), admin_message_handler),
+        MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(
+            r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^📏 Resolution|^🎯 Format|"
+            r"^🚫 4K Block|^⚡ Optimize|^🎚️ Bitrate|^🚫 Ban|^✅ Unban|^➕ Whitelist|"
+            r"^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^📏 Daily Limit|^🔙 Main Menu$"
+        ), admin_message_handler),
         # Admin slash commands from button taps
         MessageHandler(filters.TEXT & filters.Regex(r"^/ban_\d+$"), admin_ban_command),
         MessageHandler(filters.TEXT & filters.Regex(r"^/unban_\d+$"), admin_unban_command),

@@ -265,10 +265,45 @@ pip install "python-telegram-bot[socks]" pysocks socksio
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/start` | Start the bot, select language, admin panel | All users |
+| `/start` | Start the bot, select language | All users |
 | `/settings` | View and change preferences | All users |
+| `/help` | Show help message | All users |
+| `/setlimit <number>` | Set daily download limit for all users | Admin |
 
-All admin features are available through the **Admin Panel** (inline keyboard) after `/start`.
+## Admin Panel (Reply Keyboard)
+
+Admin gets a **reply keyboard** at the bottom of the chat with these buttons:
+
+```
+[📊 Stats] [👥 Users] [📥 Downloads]
+[🎛️ Settings] [📏 Resolution] [🎯 Format]
+[🚫 4K Block] [⚡ Optimize] [🎚️ Bitrate]
+[🚫 Ban] [✅ Unban] [📏 Daily Limit]
+[➕ Whitelist] [➖ Unwhitelist] [👑 Set Admin]
+[🗑️ Clear Queue] [🔙 Main Menu]
+```
+
+| Button | Action |
+|--------|--------|
+| 📊 Stats | Show bot statistics |
+| 👥 Users | List users with download counts |
+| 📥 Downloads | Download history with titles |
+| 🎛️ Settings | Show all current settings |
+| 📏 Resolution | Toggle 720p/1080p |
+| 🎯 Format | Toggle MP4/MKV/MP3 |
+| 🚫 4K Block | Toggle 4K blocking on/off |
+| ⚡ Optimize | Toggle auto-optimization |
+| 🎚️ Bitrate | Cycle 2/4/6/8 Mbps |
+| 🚫 Ban | Show users to ban (tap to ban) |
+| ✅ Unban | Show banned users (tap to unban) |
+| 📏 Daily Limit | Set download limit for all users |
+| ➕ Whitelist | Add user to whitelist |
+| ➖ Unwhitelist | Remove from whitelist |
+| 👑 Set Admin | Make user admin |
+| 🗑️ Clear Queue | Clear stuck queue items |
+| 🔙 Main Menu | Return to main keyboard |
+
+**Admins have NO download limits** — unlimited downloads.
 
 ## Whitelist Mode
 
