@@ -25,6 +25,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 APP_DIR="/opt/media-downloader-bot"
+REPO_DIR="$HOME/telegram_bot_youtikinsta"
 SERVICE_NAME="media-downloader-bot"
 DB_DIR="$APP_DIR/database"
 BACKUP_DIR="$APP_DIR/backups"
@@ -59,12 +60,19 @@ print_info "Service stopped"
 
 # Step 3: Pull latest code
 print_info "Step 3/5: Pulling latest code..."
-cd "$APP_DIR"
+cd "$REPO_DIR"
 git pull origin main
-print_info "Code updated"
+print_info "Code pulled from repo"
 
-# Step 4: Install dependencies
-print_info "Step 4/5: Installing dependencies..."
+# Step 4: Copy files to /opt and install dependencies
+print_info "Step 4/5: Copying files and installing dependencies..."
+# Copy bot code
+cp -r "$REPO_DIR/bot" "$APP_DIR/"
+cp "$REPO_DIR/runBot.py" "$APP_DIR/"
+cp "$REPO_DIR/requirements.txt" "$APP_DIR/"
+cp "$REPO_DIR/update.sh" "$APP_DIR/"
+
+# Install dependencies
 if [ -d "$APP_DIR/venv" ]; then
     source "$APP_DIR/venv/bin/activate"
     pip install -q -r "$APP_DIR/requirements.txt"
