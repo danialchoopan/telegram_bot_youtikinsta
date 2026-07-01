@@ -3,13 +3,8 @@
   Start Handler + Admin Panel
 ==========================================
 
-Admin uses REPLY KEYBOARD (regular buttons at bottom of chat).
-Regular users use INLINE KEYBOARD (glass buttons attached to message).
-
-Admin reply keyboard buttons send text commands:
-    /stats, /users, /downloads, /settings
-    /ban, /unban, /whitelist, /unwhitelist
-    /setadmin, /clearqueue, /panel
+Admin uses REPLY KEYBOARD (regular buttons at bottom).
+User actions tracked via context.user_data for proper flow.
 """
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -18,731 +13,418 @@ from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQ
 from bot.config import Config
 from bot.database import Database
 from bot.utils.messages import get_message
-from bot.utils.helpers import format_size
 
-# Admin reply keyboard (regular buttons at bottom)
-ADMIN_KEYBOARD = ReplyKeyboardMarkup(
+
+# ==========================================
+# Keyboards
+# ==========================================
+
+ADMIN_KB = ReplyKeyboardMarkup(
     [
         [KeyboardButton("📊 Stats"), KeyboardButton("👥 Users"), KeyboardButton("📥 Downloads")],
         [KeyboardButton("🎛️ Settings"), KeyboardButton("📏 Resolution"), KeyboardButton("🎯 Format")],
         [KeyboardButton("🚫 4K Block"), KeyboardButton("⚡ Optimize"), KeyboardButton("🎚️ Bitrate")],
         [KeyboardButton("🚫 Ban"), KeyboardButton("✅ Unban"), KeyboardButton("📏 Daily Limit")],
         [KeyboardButton("➕ Whitelist"), KeyboardButton("➖ Unwhitelist"), KeyboardButton("👑 Set Admin")],
-        [KeyboardButton("🗑️ Clear Queue"), KeyboardButton("🔙 Main Menu")],
+        [KeyboardButton("🗑️ Clear Queue"), KeyboardButton("🏠 Menu")],
     ],
     resize_keyboard=True,
 )
 
-# Normal user keyboard (just remove it)
-NORMAL_KEYBOARD = ReplyKeyboardMarkup([[KeyboardButton("/start")]], resize_keyboard=True)
+
+def _is_admin(uid: int) -> bool:
+    return uid == Config.ADMIN_USER_ID or Database().is_admin(uid)
 
 
-def _is_admin(user_id: int) -> bool:
-    return user_id == Config.ADMIN_USER_ID or Database().is_admin(user_id)
-
-
-def _update_env(env_path, key, value):
-    """Update a value in the .env file."""
-    if not env_path.exists():
+def _env(key, val):
+    """Write value to .env file."""
+    p = Config.BASE_DIR / ".env"
+    if not p.exists():
         return
-    lines = env_path.read_text().splitlines(keepends=True)
-    with open(env_path, "w") as f:
+    lines = p.read_text().splitlines(keepends=True)
+    with open(p, "w") as f:
         found = False
         for line in lines:
             if line.startswith(f"{key}="):
-                f.write(f"{key}={value}\n")
+                f.write(f"{key}={val}\n")
                 found = True
             else:
                 f.write(line)
         if not found:
-            f.write(f"{key}={value}\n")
+            f.write(f"{key}={val}\n")
 
 
 # ==========================================
-# /help command
-# ==========================================
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if _is_admin(user_id):
-        text = (
-            "📖 Help - Admin\n━━━━━━━━━━━━━━━━━━━\n\n"
-            "📥 Send any link to download\n\n"
-            "⌨️ Admin Keyboard:\n"
-            "📊 Stats - Bot statistics\n"
-            "👥 Users - User list\n"
-            "📥 Downloads - History with titles\n"
-            "🎛️ Settings - Show all settings\n"
-            "📏 Resolution - Toggle 720p/1080p\n"
-            "🎯 Format - Toggle MP4/MKV/MP3\n"
-            "🚫 4K Block - Toggle on/off\n"
-            "⚡ Optimize - Toggle auto-optimize\n"
-            "🎚️ Bitrate - Cycle 2/4/6/8 Mbps\n"
-            "🚫 Ban / ✅ Unban\n"
-            "➕ Whitelist / ➖ Unwhitelist\n"
-            "👑 Set Admin\n"
-            "🗑️ Clear Queue\n"
-            "📏 Daily Limit\n"
-            "🔙 Main Menu\n\n"
-            "📋 Setting Commands:\n"
-            "/setres 720 or 1080\n"
-            "/setfmt mp4 or mkv or mp3\n"
-            "/set4k on or off\n"
-            "/setopt on or off\n"
-            "/setbit 2 or 4 or 6 or 8\n"
-            "/setabit 128 or 192 or 320\n"
-            "/setlimit <number>\n\n"
-            "⚡ Admins have NO download limits"
-        )
-    else:
-        text = (
-            "📖 Help\n━━━━━━━━━━━━━━━━━━━\n\n"
-            "📥 Send a link from YouTube, Instagram, or TikTok\n"
-            "🎯 I'll show you format options to choose from\n"
-            "⚡ I'll download and optimize it for Telegram\n\n"
-            "📋 Commands:\n"
-            "/start - Main menu\n"
-            "/settings - Your preferences\n"
-            "/help - Show this message"
-        )
-
-    await update.message.reply_text(text)
-
-
-# ==========================================
-# /start command
+# /start
 # ==========================================
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = Database()
-    user = update.effective_user
-    user_data = db.get_or_create_user(user.id, user.username, user.full_name)
+    u = update.effective_user
+    db.get_or_create_user(u.id, u.username, u.full_name)
+    if u.id == Config.ADMIN_USER_ID and not db.is_admin(u.id):
+        db.set_admin(u.id, True)
 
-    if user.id == Config.ADMIN_USER_ID and not db.is_admin(user.id):
-        db.set_admin(user.id, True)
+    # Clear any pending state
+    context.user_data.pop("awaiting", None)
 
-    # Always show language selection first
-    keyboard = [
-        [InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa"),
-         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
-    ]
-    await update.message.reply_text(
-        "👋 Welcome!\n\nChoose your language:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
+    # Always ask language first
+    kb = [[InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa"),
+           InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")]]
+    await update.message.reply_text("👋 Welcome!\n\nChoose your language:", reply_markup=InlineKeyboardMarkup(kb))
 
 
-async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    lang = query.data.replace("lang_", "")
-    db = Database()
-    db.update_user_language(query.from_user.id, lang)
+async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    lang = q.data.replace("lang_", "")
+    Database().update_user_language(q.from_user.id, lang)
 
-    user_id = query.from_user.id
-
-    if _is_admin(user_id):
-        # Show admin welcome dashboard with stats
-        await _show_admin_welcome(query, user_id)
+    if _is_admin(q.from_user.id):
+        await _show_dashboard(q)
     else:
-        await query.edit_message_text(get_message(lang, "language_selected"))
+        await q.edit_message_text(get_message(lang, "language_selected"))
 
 
-async def _show_admin_welcome(query, user_id: int):
-    """Show admin welcome dashboard with stats."""
+async def _show_dashboard(query):
     db = Database()
-    stats = db.get_bot_stats()
-    wl_on = db.is_whitelist_enabled()
-    wl_count = len(db.get_whitelisted_users())
+    s = db.get_bot_stats()
+    wl = db.is_whitelist_enabled()
+    wl_n = len(db.get_whitelisted_users())
 
     text = (
         f"👋 Welcome back boss!\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📊 Bot Status:\n"
-        f"👥 Total Users: {stats['total_users']}\n"
-        f"📥 Total Downloads: {stats['total_downloads']}\n"
-        f"💾 Data Processed: {stats['total_size_gb']} GB\n"
-        f"✅ Success Rate: {stats['success_rate']}%\n"
-        f"🔄 Queue: {stats['active_queue']} items\n"
-        f"🚫 4K Blocked: {stats.get('blocked_4k', 0)}\n"
-        f"🔒 Whitelist: {'ON' if wl_on else 'OFF'} ({wl_count})\n\n"
-        f"⚡ You have unlimited downloads\n"
-        f"📋 Send a link to download or use the keyboard below"
+        f"👥 Users: {s['total_users']}  |  📥 Downloads: {s['total_downloads']}\n"
+        f"💾 Data: {s['total_size_gb']} GB  |  📈 Success: {s['success_rate']}%\n"
+        f"🔄 Queue: {s['active_queue']}  |  🚫 4K Blocked: {s.get('blocked_4k', 0)}\n"
+        f"🔒 Whitelist: {'ON' if wl else 'OFF'} ({wl_n})\n\n"
+        f"⚡ Unlimited downloads • Use keyboard below"
     )
+    await query.edit_message_text(text, reply_markup=ADMIN_KB)
 
-    await query.edit_message_text(text, reply_markup=ADMIN_KEYBOARD)
+
+# ==========================================
+# /help
+# ==========================================
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_admin(update.effective_user.id):
+        t = (
+            "📖 Help — Admin\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "📥 Send any link to download\n\n"
+            "Buttons: tap to see options\n"
+            "📊 Stats • 👥 Users • 📥 Downloads\n"
+            "🎛️ Settings • 📏 Resolution • 🎯 Format\n"
+            "🚫 4K Block • ⚡ Optimize • 🎚️ Bitrate\n"
+            "🚫 Ban • ✅ Unban • 📏 Daily Limit\n"
+            "➕ Whitelist • ➖ Unwhitelist • 👑 Set Admin\n"
+            "🗑️ Clear Queue • 🏠 Menu\n\n"
+            "⚡ Admins have NO download limits"
+        )
+    else:
+        t = (
+            "📖 Help\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "📥 Send a YouTube, Instagram, or TikTok link\n"
+            "🎯 Choose format → bot downloads → sends file\n\n"
+            "/start • /settings • /help"
+        )
+    await update.message.reply_text(t)
 
 
 # ==========================================
 # Admin Reply Keyboard Handler
 # ==========================================
 
-async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle admin reply keyboard button presses."""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
+async def admin_kb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not _is_admin(uid):
         return
 
-    text = update.message.text.strip()
+    txt = update.message.text.strip()
+    db = Database()
 
-    # Stats
-    if text == "📊 Stats":
-        await _send_stats(update, user_id)
+    # --- Info panels ---
+    if txt == "📊 Stats":
+        s = db.get_bot_stats()
+        wl = db.is_whitelist_enabled()
+        wl_n = len(db.get_whitelisted_users())
+        fmt = "\n".join(f"  • {f}: {c}" for f, c in s.get("format_stats", {}).items()) or "  —"
+        qual = "\n".join(f"  • {q}: {c}" for q, c in s.get("quality_stats", {}).items()) or "  —"
+        await update.message.reply_text(
+            f"📊 Stats\n━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👥 {s['total_users']} users • 📥 {s['total_downloads']} downloads\n"
+            f"💾 {s['total_size_gb']} GB • 📈 {s['success_rate']}% success\n"
+            f"🔄 {s['active_queue']} queued • 🚫 {s.get('blocked_4k',0)} 4K blocked\n"
+            f"🔒 Whitelist: {'ON' if wl else 'OFF'} ({wl_n})\n\n"
+            f"🎯 Formats:\n{fmt}\n\n📐 Quality:\n{qual}"
+        )
 
-    # Users
-    elif text == "👥 Users":
-        await _send_users(update, user_id)
+    elif txt == "👥 Users":
+        with db._cursor() as cur:
+            cur.execute("SELECT user_id,username,full_name,total_downloads,is_admin,banned_until FROM users ORDER BY last_activity DESC LIMIT 15")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No users.")
+        lines = ["👥 Users:\n"]
+        for r in rows:
+            b = []
+            if r["is_admin"]: b.append("👑")
+            if r["banned_until"]: b.append("🚫")
+            nm = r["full_name"] or r["username"] or str(r["user_id"])
+            lines.append(f"• {nm} | ID:{r['user_id']} | 📥{r['total_downloads']} {' '.join(b)}")
+        await update.message.reply_text("\n".join(lines))
 
-    # Downloads
-    elif text == "📥 Downloads":
-        await _send_downloads(update, user_id)
+    elif txt == "📥 Downloads":
+        with db._cursor() as cur:
+            cur.execute("SELECT title,selected_format,status,original_size_mb,optimized_size_mb FROM downloads ORDER BY request_time DESC LIMIT 10")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No downloads yet.")
+        icons = {"completed":"✅","failed":"❌","downloading":"📥","uploading":"📤"}
+        lines = ["📥 Downloads:\n"]
+        for r in rows:
+            ic = icons.get(r["status"],"⏳")
+            t = (r["title"] or "?")[:25]
+            sz = f"{r['original_size_mb'] or 0}→{r['optimized_size_mb'] or 0}MB" if r["optimized_size_mb"] else f"{r['original_size_mb'] or 0}MB"
+            lines.append(f"{ic} {t} | {r['selected_format'].upper()} | {sz}")
+        await update.message.reply_text("\n".join(lines))
 
-    # Settings overview — shows current values with instructions
-    elif text == "🎛️ Settings":
-        text = (
+    # --- Settings with selection buttons ---
+    elif txt == "🎛️ Settings":
+        txt2 = (
             f"🎛️ Settings\n━━━━━━━━━━━━━━━━━━━\n\n"
             f"📏 Resolution: {Config.MAX_RESOLUTION}p\n"
-            f"   → Type: /setres 720 or /setres 1080\n\n"
             f"🎯 Format: {Config.DEFAULT_FORMAT.upper()}\n"
-            f"   → Type: /setfmt mp4 or mkv or mp3\n\n"
             f"🚫 4K Block: {'✅ ON' if Config.ENABLE_4K_BLOCKING else '❌ OFF'}\n"
-            f"   → Type: /set4k on or /set4k off\n\n"
-            f"⚡ Auto-Optimize: {'✅ ON' if Config.AUTO_OPTIMIZE else '❌ OFF'}\n"
-            f"   → Type: /setopt on or /setopt off\n\n"
-            f"🎚️ Video Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps\n"
-            f"   → Type: /setbit 2 or 4 or 6 or 8\n\n"
-            f"🎵 Audio Bitrate: {Config.AUDIO_BITRATE_KBPS} kbps\n"
-            f"   → Type: /setabit 128 or 192 or 320\n\n"
-            f"📊 Daily Limit: {Config.MAX_DAILY_DOWNLOADS_PER_USER}/user\n"
-            f"   → Type: /setlimit <number>\n\n"
-            f"⌨️ Or use buttons to toggle quickly"
+            f"⚡ Optimize: {'✅ ON' if Config.AUTO_OPTIMIZE else '❌ OFF'}\n"
+            f"🎚️ Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps\n"
+            f"🎵 Audio: {Config.AUDIO_BITRATE_KBPS} kbps\n"
+            f"📊 Daily: {Config.MAX_DAILY_DOWNLOADS_PER_USER}/user\n\n"
+            f"Tap a setting button below to change it."
         )
-        await update.message.reply_text(text)
+        await update.message.reply_text(txt2)
 
-    # Resolution — show selection buttons
-    elif text == "📏 Resolution":
+    elif txt == "📏 Resolution":
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("720p" + (" ✅" if Config.MAX_RESOLUTION==720 else ""), callback_data="adm_res_720"),
+            InlineKeyboardButton("1080p" + (" ✅" if Config.MAX_RESOLUTION==1080 else ""), callback_data="adm_res_1080"),
+        ]])
+        await update.message.reply_text(f"📏 Resolution: {Config.MAX_RESOLUTION}p\n\nTap to change:", reply_markup=kb)
+
+    elif txt == "🎯 Format":
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("720p" + (" ✅" if Config.MAX_RESOLUTION == 720 else ""), callback_data="admsetres_720"),
-             InlineKeyboardButton("1080p" + (" ✅" if Config.MAX_RESOLUTION == 1080 else ""), callback_data="admsetres_1080")],
+            [InlineKeyboardButton("MP4" + (" ✅" if Config.DEFAULT_FORMAT=="mp4" else ""), callback_data="adm_fmt_mp4"),
+             InlineKeyboardButton("MKV" + (" ✅" if Config.DEFAULT_FORMAT=="mkv" else ""), callback_data="adm_fmt_mkv")],
+            [InlineKeyboardButton("MP3" + (" ✅" if Config.DEFAULT_FORMAT=="mp3" else ""), callback_data="adm_fmt_mp3")],
         ])
-        await update.message.reply_text(f"📏 Resolution (current: {Config.MAX_RESOLUTION}p)\n\nSelect:", reply_markup=kb)
+        await update.message.reply_text(f"🎯 Format: {Config.DEFAULT_FORMAT.upper()}\n\nTap to change:", reply_markup=kb)
 
-    # Format — show selection buttons
-    elif text == "🎯 Format":
+    elif txt == "🚫 4K Block":
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("ON" + (" ✅" if Config.ENABLE_4K_BLOCKING else ""), callback_data="adm_4k_on"),
+            InlineKeyboardButton("OFF" + (" ✅" if not Config.ENABLE_4K_BLOCKING else ""), callback_data="adm_4k_off"),
+        ]])
+        s = "ON" if Config.ENABLE_4K_BLOCKING else "OFF"
+        await update.message.reply_text(f"🚫 4K Block: {s}\n\nTap to change:", reply_markup=kb)
+
+    elif txt == "⚡ Optimize":
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("ON" + (" ✅" if Config.AUTO_OPTIMIZE else ""), callback_data="adm_opt_on"),
+            InlineKeyboardButton("OFF" + (" ✅" if not Config.AUTO_OPTIMIZE else ""), callback_data="adm_opt_off"),
+        ]])
+        s = "ON" if Config.AUTO_OPTIMIZE else "OFF"
+        await update.message.reply_text(f"⚡ Auto-Optimize: {s}\n\nTap to change:", reply_markup=kb)
+
+    elif txt == "🎚️ Bitrate":
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("MP4" + (" ✅" if Config.DEFAULT_FORMAT == "mp4" else ""), callback_data="admsetfmt_mp4"),
-             InlineKeyboardButton("MKV" + (" ✅" if Config.DEFAULT_FORMAT == "mkv" else ""), callback_data="admsetfmt_mkv")],
-            [InlineKeyboardButton("MP3" + (" ✅" if Config.DEFAULT_FORMAT == "mp3" else ""), callback_data="admsetfmt_mp3")],
+            [InlineKeyboardButton(f"{r} Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS==r else ""), callback_data=f"adm_bit_{r}") for r in [2,4]],
+            [InlineKeyboardButton(f"{r} Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS==r else ""), callback_data=f"adm_bit_{r}") for r in [6,8]],
         ])
-        await update.message.reply_text(f"🎯 Format (current: {Config.DEFAULT_FORMAT.upper()})\n\nSelect:", reply_markup=kb)
+        await update.message.reply_text(f"🎚️ Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps\n\nTap to change:", reply_markup=kb)
 
-    # 4K Block — show on/off buttons
-    elif text == "🚫 4K Block":
-        state = "✅ ON" if Config.ENABLE_4K_BLOCKING else "❌ OFF"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ON ✅" if Config.ENABLE_4K_BLOCKING else "ON", callback_data="admset4k_on"),
-             InlineKeyboardButton("OFF ✅" if not Config.ENABLE_4K_BLOCKING else "OFF", callback_data="admset4k_off")],
-        ])
-        await update.message.reply_text(f"🚫 4K Block (current: {state})\n\nSelect:", reply_markup=kb)
-
-    # Optimize — show on/off buttons
-    elif text == "⚡ Optimize":
-        state = "✅ ON" if Config.AUTO_OPTIMIZE else "❌ OFF"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ON ✅" if Config.AUTO_OPTIMIZE else "ON", callback_data="admsetopt_on"),
-             InlineKeyboardButton("OFF ✅" if not Config.AUTO_OPTIMIZE else "OFF", callback_data="admsetopt_off")],
-        ])
-        await update.message.reply_text(f"⚡ Auto-Optimize (current: {state})\n\nSelect:", reply_markup=kb)
-
-    # Bitrate — show selection buttons
-    elif text == "🎚️ Bitrate":
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"2 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 2 else ""), callback_data="admsetbit_2"),
-             InlineKeyboardButton(f"4 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 4 else ""), callback_data="admsetbit_4")],
-            [InlineKeyboardButton(f"6 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 6 else ""), callback_data="admsetbit_6"),
-             InlineKeyboardButton(f"8 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 8 else ""), callback_data="admsetbit_8")],
-        ])
-        await update.message.reply_text(f"🎚️ Video Bitrate (current: {Config.VIDEO_BITRATE_MBPS} Mbps)\n\nSelect:", reply_markup=kb)
-
-    # Ban
-    elif text == "🚫 Ban":
-        await _send_ban_list(update, user_id)
-
-    # Unban
-    elif text == "✅ Unban":
-        await _send_unban_list(update, user_id)
-
-    # Whitelist
-    elif text == "➕ Whitelist":
-        await _send_whitelist_add(update, user_id)
-
-    # Unwhitelist
-    elif text == "➖ Unwhitelist":
-        await _send_whitelist_remove(update, user_id)
-
-    # Set Admin
-    elif text == "👑 Set Admin":
-        await _send_setadmin_list(update, user_id)
-
-    # Daily Limit
-    elif text == "📏 Daily Limit":
-        await _send_daily_limit(update, user_id)
-
-    # Clear Queue
-    elif text == "🗑️ Clear Queue":
-        db = Database()
+    # --- User management ---
+    elif txt == "🚫 Ban":
         with db._cursor() as cur:
-            cur.execute("UPDATE download_queue SET status = 'failed' WHERE status IN ('waiting', 'processing')")
-            count = cur.rowcount
-        await update.message.reply_text(f"🗑️ Cleared {count} items from queue.")
+            cur.execute("SELECT user_id,username,full_name FROM users WHERE is_admin=0 ORDER BY last_activity DESC LIMIT 10")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No users.")
+        lines = ["🚫 Tap to ban:\n"]
+        kb = []
+        for r in rows:
+            nm = r["full_name"] or r["username"] or str(r["user_id"])
+            lines.append(f"• {nm} ({r['user_id']})")
+            kb.append([InlineKeyboardButton(f"🚫 Ban {nm[:15]}", callback_data=f"adm_ban_{r['user_id']}")])
+        await update.message.reply_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(kb))
 
-    # Main Menu
-    elif text == "🔙 Main Menu":
-        await update.message.reply_text("Main menu. Send a link to download.", reply_markup=ADMIN_KEYBOARD)
-
-
-# ==========================================
-# Admin Action Functions (send as messages)
-# ==========================================
-
-async def _send_stats(update: Update, user_id: int):
-    db = Database()
-    stats = db.get_bot_stats()
-    wl_on = db.is_whitelist_enabled()
-    wl_count = len(db.get_whitelisted_users())
-
-    text = (
-        f"📊 Bot Statistics\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 Users: {stats['total_users']}\n"
-        f"📥 Downloads: {stats['total_downloads']}\n"
-        f"💾 Data: {stats['total_size_gb']} GB\n"
-        f"🔄 Queue: {stats['active_queue']} items\n"
-        f"📈 Success: {stats['success_rate']}%\n"
-        f"🚫 4K Blocked: {stats.get('blocked_4k', 0)}\n"
-        f"🔒 Whitelist: {'ON' if wl_on else 'OFF'} ({wl_count} users)"
-    )
-
-    fmt = stats.get("format_stats", {})
-    if fmt:
-        text += "\n\n🎯 Formats:\n"
-        for f, c in fmt.items():
-            text += f"  • {f}: {c}\n"
-
-    await update.message.reply_text(text)
-
-
-async def _send_users(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute(
-            "SELECT user_id, username, full_name, total_downloads, is_admin, banned_until "
-            "FROM users ORDER BY last_activity DESC LIMIT 15"
-        )
-        users = cur.fetchall()
-
-    if not users:
-        await update.message.reply_text("No users yet.")
-        return
-
-    lines = ["👥 Users:\n"]
-    for u in users:
-        badges = []
-        if u["is_admin"]:
-            badges.append("👑")
-        if u["banned_until"]:
-            badges.append("🚫")
-        badge = " ".join(badges)
-        name = u["full_name"] or u["username"] or str(u["user_id"])
-        lines.append(f"• {name} | ID: {u['user_id']} | 📥 {u['total_downloads']} {badge}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_downloads(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute(
-            "SELECT d.title, d.selected_format, d.status, d.original_size_mb, d.optimized_size_mb, u.username "
-            "FROM downloads d LEFT JOIN users u ON d.user_id = u.user_id "
-            "ORDER BY d.request_time DESC LIMIT 10"
-        )
-        downloads = cur.fetchall()
-
-    if not downloads:
-        await update.message.reply_text("No downloads yet.")
-        return
-
-    lines = ["📥 Recent Downloads:\n"]
-    for d in downloads:
-        icon = {"completed": "✅", "failed": "❌", "downloading": "📥", "uploading": "📤"}.get(d["status"], "⏳")
-        title = (d["title"] or "Unknown")[:25]
-        user = d["username"] or "?"
-        size = f"{d['original_size_mb'] or 0}→{d['optimized_size_mb'] or 0}MB" if d["optimized_size_mb"] else f"{d['original_size_mb'] or 0}MB"
-        lines.append(f"{icon} {title} | {d['selected_format'].upper()} | {size}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_daily_limit(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute("SELECT AVG(download_limit_per_day) as avg_limit FROM users WHERE is_admin = 0")
-        avg = cur.fetchone()["avg_limit"] or 10
-
-    text = (
-        f"📏 Daily Download Limit\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Current average: {avg:.0f} downloads/user\n"
-        f"Admins: Unlimited\n\n"
-        f"Send a number to set limit for ALL users:\n"
-        f"Example: /setlimit 20"
-    )
-    await update.message.reply_text(text)
-
-
-async def _send_ban_list(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute("SELECT user_id, username, full_name FROM users WHERE is_admin = 0 ORDER BY last_activity DESC LIMIT 10")
-        users = cur.fetchall()
-
-    if not users:
-        await update.message.reply_text("No users to ban.")
-        return
-
-    lines = ["🚫 Send /ban <user_id> to ban:\n"]
-    for u in users:
-        name = u["full_name"] or u["username"] or str(u["user_id"])
-        lines.append(f"• {name} → /ban_{u['user_id']}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_unban_list(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute("SELECT user_id, username, full_name FROM users WHERE banned_until IS NOT NULL")
-        users = cur.fetchall()
-
-    if not users:
-        await update.message.reply_text("No banned users.")
-        return
-
-    lines = ["✅ Send /unban <user_id> to unban:\n"]
-    for u in users:
-        name = u["full_name"] or u["username"] or str(u["user_id"])
-        lines.append(f"• {name} → /unban_{u['user_id']}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_whitelist_add(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute("SELECT user_id, username, full_name FROM users WHERE is_admin = 0 ORDER BY last_activity DESC LIMIT 10")
-        users = cur.fetchall()
-
-    if not users:
-        await update.message.reply_text("No users to whitelist.")
-        return
-
-    wl_on = db.is_whitelist_enabled()
-    lines = [f"🔒 Whitelist: {'ON' if wl_on else 'OFF'}\n\nSend /wl_<user_id> to whitelist:\n"]
-    for u in users:
-        name = u["full_name"] or u["username"] or str(u["user_id"])
-        wl = " ✅" if db.is_user_whitelisted(u["user_id"]) else ""
-        lines.append(f"• {name} → /wl_{u['user_id']}{wl}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_whitelist_remove(update: Update, user_id: int):
-    db = Database()
-    wl_users = db.get_whitelisted_users()
-
-    if not wl_users:
-        await update.message.reply_text("No whitelisted users.")
-        return
-
-    lines = ["➖ Send /unwl_<user_id> to remove:\n"]
-    for uid in wl_users:
-        user = db.get_user(uid)
-        name = (user.get("full_name") or user.get("username") or str(uid)) if user else str(uid)
-        lines.append(f"• {name} → /unwl_{uid}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-async def _send_setadmin_list(update: Update, user_id: int):
-    db = Database()
-    with db._cursor() as cur:
-        cur.execute("SELECT user_id, username, full_name FROM users WHERE is_admin = 0 ORDER BY last_activity DESC LIMIT 10")
-        users = cur.fetchall()
-
-    if not users:
-        await update.message.reply_text("No users available.")
-        return
-
-    lines = ["👑 Send /setadmin_<user_id> to make admin:\n"]
-    for u in users:
-        name = u["full_name"] or u["username"] or str(u["user_id"])
-        lines.append(f"• {name} → /setadmin_{u['user_id']}")
-
-    await update.message.reply_text("\n".join(lines))
-
-
-# ==========================================
-# Admin slash commands (from button taps)
-# ==========================================
-
-async def admin_ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /ban_<user_id>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
-
-    try:
-        target_id = int(update.message.text.replace("/ban_", ""))
-        Database().ban_user(target_id, hours=24)
-        await update.message.reply_text(f"🚫 User {target_id} banned for 24h.")
-    except Exception:
-        await update.message.reply_text("Usage: /ban_<user_id>")
-
-
-async def admin_unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /unban_<user_id>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
-
-    try:
-        target_id = int(update.message.text.replace("/unban_", ""))
-        db = Database()
+    elif txt == "✅ Unban":
         with db._cursor() as cur:
-            cur.execute("UPDATE users SET banned_until = NULL WHERE user_id = ?", (target_id,))
-        await update.message.reply_text(f"✅ User {target_id} unbanned.")
-    except Exception:
-        await update.message.reply_text("Usage: /unban_<user_id>")
+            cur.execute("SELECT user_id,username,full_name FROM users WHERE banned_until IS NOT NULL")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No banned users.")
+        kb = []
+        for r in rows:
+            nm = r["full_name"] or r["username"] or str(r["user_id"])
+            kb.append([InlineKeyboardButton(f"✅ Unban {nm[:15]}", callback_data=f"adm_unban_{r['user_id']}")])
+        await update.message.reply_text("✅ Tap to unban:", reply_markup=InlineKeyboardMarkup(kb))
 
+    elif txt == "➕ Whitelist":
+        with db._cursor() as cur:
+            cur.execute("SELECT user_id,username,full_name FROM users WHERE is_admin=0 ORDER BY last_activity DESC LIMIT 10")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No users.")
+        lines = [f"🔒 Whitelist: {'ON' if db.is_whitelist_enabled() else 'OFF'}\n\nTap to whitelist:"]
+        kb = []
+        for r in rows:
+            nm = r["full_name"] or r["username"] or str(r["user_id"])
+            wl = " ✅" if db.is_user_whitelisted(r["user_id"]) else ""
+            lines.append(f"• {nm} ({r['user_id']}){wl}")
+            kb.append([InlineKeyboardButton(f"➕ {nm[:15]}", callback_data=f"adm_wladd_{r['user_id']}")])
+        await update.message.reply_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(kb))
 
-async def admin_wl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /wl_<user_id>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
+    elif txt == "➖ Unwhitelist":
+        wl_users = db.get_whitelisted_users()
+        if not wl_users:
+            return await update.message.reply_text("No whitelisted users.")
+        kb = []
+        for uid in wl_users:
+            u = db.get_user(uid)
+            nm = (u.get("full_name") or u.get("username") or str(uid)) if u else str(uid)
+            kb.append([InlineKeyboardButton(f"❌ {nm[:15]}", callback_data=f"adm_wlrm_{uid}")])
+        await update.message.reply_text("➖ Tap to remove:", reply_markup=InlineKeyboardMarkup(kb))
 
-    try:
-        target_id = int(update.message.text.replace("/wl_", ""))
-        Database().add_to_whitelist(target_id)
-        await update.message.reply_text(f"✅ User {target_id} added to whitelist.")
-    except Exception:
-        await update.message.reply_text("Usage: /wl_<user_id>")
+    elif txt == "👑 Set Admin":
+        with db._cursor() as cur:
+            cur.execute("SELECT user_id,username,full_name FROM users WHERE is_admin=0 ORDER BY last_activity DESC LIMIT 10")
+            rows = cur.fetchall()
+        if not rows:
+            return await update.message.reply_text("No users.")
+        kb = []
+        for r in rows:
+            nm = r["full_name"] or r["username"] or str(r["user_id"])
+            kb.append([InlineKeyboardButton(f"👑 {nm[:15]}", callback_data=f"adm_setadm_{r['user_id']}")])
+        await update.message.reply_text("👑 Tap to make admin:", reply_markup=InlineKeyboardMarkup(kb))
 
+    elif txt == "📏 Daily Limit":
+        with db._cursor() as cur:
+            cur.execute("SELECT AVG(download_limit_per_day) as avg FROM users WHERE is_admin=0")
+            avg = cur.fetchone()["avg"] or 10
+        await update.message.reply_text(
+            f"📏 Daily Limit\n━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Current: {avg:.0f} per user\nAdmins: Unlimited\n\n"
+            f"Send /setlimit <number> to change\nExample: /setlimit 20"
+        )
 
-async def admin_unwl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /unwl_<user_id>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
+    elif txt == "🗑️ Clear Queue":
+        with db._cursor() as cur:
+            cur.execute("UPDATE download_queue SET status='failed' WHERE status IN ('waiting','processing')")
+            n = cur.rowcount
+        await update.message.reply_text(f"🗑️ Cleared {n} items from queue.")
 
-    try:
-        target_id = int(update.message.text.replace("/unwl_", ""))
-        Database().remove_from_whitelist(target_id)
-        await update.message.reply_text(f"❌ User {target_id} removed from whitelist.")
-    except Exception:
-        await update.message.reply_text("Usage: /unwl_<user_id>")
-
-
-async def admin_setadmin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setadmin_<user_id>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
-
-    try:
-        target_id = int(update.message.text.replace("/setadmin_", ""))
-        Database().set_admin(target_id, True)
-        await update.message.reply_text(f"👑 User {target_id} is now admin.")
-    except Exception:
-        await update.message.reply_text("Usage: /setadmin_<user_id>")
-
-
-async def setlimit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setlimit <number>"""
-    user_id = update.effective_user.id
-    if not _is_admin(user_id):
-        return
-
-    try:
-        limit = int(update.message.text.split()[1])
-        Database().set_daily_limit_all(limit)
-        await update.message.reply_text(f"✅ Daily limit set to {limit} for all users.\nAdmins remain unlimited.")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setlimit <number>\nExample: /setlimit 20")
-
-
-async def setres_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setres <720|1080>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = int(update.message.text.split()[1])
-        if val not in (720, 1080):
-            raise ValueError
-        Config.MAX_RESOLUTION = val
-        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", str(val))
-        await update.message.reply_text(f"📏 Resolution set to {val}p")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setres <720|1080>\nExample: /setres 1080")
-
-
-async def setfmt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setfmt <mp4|mkv|mp3>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = update.message.text.split()[1].lower()
-        if val not in ("mp4", "mkv", "mp3"):
-            raise ValueError
-        Config.DEFAULT_FORMAT = val
-        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", val)
-        await update.message.reply_text(f"🎯 Format set to {val.upper()}")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setfmt <mp4|mkv|mp3>\nExample: /setfmt mp4")
-
-
-async def set4k_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /set4k <on|off>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = update.message.text.split()[1].lower()
-        if val not in ("on", "off"):
-            raise ValueError
-        Config.ENABLE_4K_BLOCKING = val == "on"
-        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", val)
-        await update.message.reply_text(f"🚫 4K Block: {'ON' if Config.ENABLE_4K_BLOCKING else 'OFF'}")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /set4k <on|off>\nExample: /set4k on")
-
-
-async def setopt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setopt <on|off>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = update.message.text.split()[1].lower()
-        if val not in ("on", "off"):
-            raise ValueError
-        Config.AUTO_OPTIMIZE = val == "on"
-        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", val)
-        await update.message.reply_text(f"⚡ Auto-Optimize: {'ON' if Config.AUTO_OPTIMIZE else 'OFF'}")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setopt <on|off>\nExample: /setopt on")
-
-
-async def setbit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setbit <2|4|6|8>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = int(update.message.text.split()[1])
-        if val not in (2, 4, 6, 8):
-            raise ValueError
-        Config.VIDEO_BITRATE_MBPS = val
-        _update_env(Config.BASE_DIR / ".env", "VIDEO_BITRATE_MBPS", str(val))
-        await update.message.reply_text(f"🎚️ Video Bitrate: {val} Mbps")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setbit <2|4|6|8>\nExample: /setbit 4")
-
-
-async def setabit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /setabit <128|192|320>"""
-    if not _is_admin(update.effective_user.id):
-        return
-    try:
-        val = int(update.message.text.split()[1])
-        if val not in (128, 192, 320):
-            raise ValueError
-        Config.AUDIO_BITRATE_KBPS = val
-        _update_env(Config.BASE_DIR / ".env", "AUDIO_BITRATE_KBPS", str(val))
-        await update.message.reply_text(f"🎵 Audio Bitrate: {val} kbps")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /setabit <128|192|320>\nExample: /setabit 192")
+    elif txt == "🏠 Menu":
+        await update.message.reply_text("🏠 Main menu", reply_markup=ADMIN_KB)
 
 
 # ==========================================
-# Settings Inline Keyboard Callbacks
+# Settings Callbacks (inline keyboard taps)
 # ==========================================
 
-async def setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle admin settings inline keyboard button taps."""
-    query = update.callback_query
-    await query.answer()
-    if not _is_admin(query.from_user.id):
+async def adm_setting_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if not _is_admin(q.from_user.id):
         return
 
-    data = query.data
+    d = q.data
 
-    if data.startswith("admsetres_"):
-        val = int(data.replace("admsetres_", ""))
-        Config.MAX_RESOLUTION = val
-        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", str(val))
-        await query.edit_message_text(f"✅ Resolution set to {val}p")
+    if d.startswith("adm_res_"):
+        v = int(d.replace("adm_res_", ""))
+        Config.MAX_RESOLUTION = v
+        _env("MAX_RESOLUTION", str(v))
+        await q.edit_message_text(f"✅ Resolution: {v}p")
 
-    elif data.startswith("admsetfmt_"):
-        val = data.replace("admsetfmt_", "")
-        Config.DEFAULT_FORMAT = val
-        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", val)
-        await query.edit_message_text(f"✅ Format set to {val.upper()}")
+    elif d.startswith("adm_fmt_"):
+        v = d.replace("adm_fmt_", "")
+        Config.DEFAULT_FORMAT = v
+        _env("DEFAULT_FORMAT", v)
+        await q.edit_message_text(f"✅ Format: {v.upper()}")
 
-    elif data.startswith("admset4k_"):
-        val = data.replace("admset4k_", "") == "on"
-        Config.ENABLE_4K_BLOCKING = val
-        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", str(val).lower())
-        state = "ON" if val else "OFF"
-        await query.edit_message_text(f"✅ 4K Block: {state}")
+    elif d.startswith("adm_4k_"):
+        v = d.replace("adm_4k_", "") == "on"
+        Config.ENABLE_4K_BLOCKING = v
+        _env("ENABLE_4K_BLOCKING", str(v).lower())
+        await q.edit_message_text(f"✅ 4K Block: {'ON' if v else 'OFF'}")
 
-    elif data.startswith("admsetopt_"):
-        val = data.replace("admsetopt_", "") == "on"
-        Config.AUTO_OPTIMIZE = val
-        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", str(val).lower())
-        state = "ON" if val else "OFF"
-        await query.edit_message_text(f"✅ Auto-Optimize: {state}")
+    elif d.startswith("adm_opt_"):
+        v = d.replace("adm_opt_", "") == "on"
+        Config.AUTO_OPTIMIZE = v
+        _env("AUTO_OPTIMIZE", str(v).lower())
+        await q.edit_message_text(f"✅ Auto-Optimize: {'ON' if v else 'OFF'}")
 
-    elif data.startswith("admsetbit_"):
-        val = int(data.replace("admsetbit_", ""))
-        Config.VIDEO_BITRATE_MBPS = val
-        _update_env(Config.BASE_DIR / ".env", "VIDEO_BITRATE_MBPS", str(val))
-        await query.edit_message_text(f"✅ Video Bitrate: {val} Mbps")
+    elif d.startswith("adm_bit_"):
+        v = int(d.replace("adm_bit_", ""))
+        Config.VIDEO_BITRATE_MBPS = v
+        _env("VIDEO_BITRATE_MBPS", str(v))
+        await q.edit_message_text(f"✅ Bitrate: {v} Mbps")
+
+    elif d.startswith("adm_ban_"):
+        tid = int(d.replace("adm_ban_", ""))
+        Database().ban_user(tid, 24)
+        await q.edit_message_text(f"🚫 User {tid} banned for 24h")
+
+    elif d.startswith("adm_unban_"):
+        tid = int(d.replace("adm_unban_", ""))
+        with Database()._cursor() as cur:
+            cur.execute("UPDATE users SET banned_until=NULL WHERE user_id=?", (tid,))
+        await q.edit_message_text(f"✅ User {tid} unbanned")
+
+    elif d.startswith("adm_wladd_"):
+        tid = int(d.replace("adm_wladd_", ""))
+        Database().add_to_whitelist(tid)
+        await q.edit_message_text(f"✅ User {tid} whitelisted")
+
+    elif d.startswith("adm_wlrm_"):
+        tid = int(d.replace("adm_wlrm_", ""))
+        Database().remove_from_whitelist(tid)
+        await q.edit_message_text(f"❌ User {tid} removed from whitelist")
+
+    elif d.startswith("adm_setadm_"):
+        tid = int(d.replace("adm_setadm_", ""))
+        Database().set_admin(tid, True)
+        await q.edit_message_text(f"👑 User {tid} is now admin")
 
 
 # ==========================================
-# Register handlers
+# /setlimit
+# ==========================================
+
+async def setlimit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        n = int(update.message.text.split()[1])
+        Database().set_daily_limit_all(n)
+        await update.message.reply_text(f"✅ Daily limit: {n} for all users")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setlimit <number>")
+
+
+# ==========================================
+# Register
 # ==========================================
 
 def get_handlers():
     return [
         CommandHandler("start", start_command),
         CommandHandler("help", help_command),
-        CommandHandler("setlimit", setlimit_command),
-        CommandHandler("setres", setres_command),
-        CommandHandler("setfmt", setfmt_command),
-        CommandHandler("set4k", set4k_command),
-        CommandHandler("setopt", setopt_command),
-        CommandHandler("setbit", setbit_command),
-        CommandHandler("setabit", setabit_command),
-        CallbackQueryHandler(language_callback, pattern=r"^lang_"),
-        CallbackQueryHandler(setting_callback, pattern=r"^admset(res|fmt|4k|opt|bit)_"),
-        # Admin text commands from reply keyboard
+        CommandHandler("setlimit", setlimit_cmd),
+        CallbackQueryHandler(lang_callback, pattern=r"^lang_"),
+        CallbackQueryHandler(adm_setting_cb, pattern=r"^adm_"),
         MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(
             r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^📏 Resolution|^🎯 Format|"
             r"^🚫 4K Block|^⚡ Optimize|^🎚️ Bitrate|^🚫 Ban|^✅ Unban|^➕ Whitelist|"
-            r"^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^📏 Daily Limit|^🔙 Main Menu$"
-        ), admin_message_handler),
-        # Admin slash commands from button taps
-        MessageHandler(filters.TEXT & filters.Regex(r"^/ban_\d+$"), admin_ban_command),
-        MessageHandler(filters.TEXT & filters.Regex(r"^/unban_\d+$"), admin_unban_command),
-        MessageHandler(filters.TEXT & filters.Regex(r"^/wl_\d+$"), admin_wl_command),
-        MessageHandler(filters.TEXT & filters.Regex(r"^/unwl_\d+$"), admin_unwl_command),
-        MessageHandler(filters.TEXT & filters.Regex(r"^/setadmin_\d+$"), admin_setadmin_command),
+            r"^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^📏 Daily Limit|^🏠 Menu$"
+        ), admin_kb_handler),
     ]
