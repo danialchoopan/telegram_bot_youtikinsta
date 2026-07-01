@@ -66,7 +66,27 @@ sudo systemctl stop media-downloader-bot
 sudo systemctl status media-downloader-bot
 ```
 
-## Manual Installation
+## Updating the Bot
+
+After any code changes, run on your server:
+
+```bash
+cd ~/telegram_bot_youtikinsta
+git pull
+chmod +x update.sh
+./update.sh
+```
+
+This automatically:
+1. Backs up database (keeps last 5 backups)
+2. Stops bot service
+3. Pulls latest code from git
+4. Copies files to /opt/media-downloader-bot
+5. Installs new dependencies
+6. Restarts bot service
+7. Restores database if bot fails to start
+
+Your `.env` file and database are **never overwritten** during updates.
 
 ### 1. Clone the repository
 

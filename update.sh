@@ -66,11 +66,16 @@ print_info "Code pulled from repo"
 
 # Step 4: Copy files to /opt and install dependencies
 print_info "Step 4/5: Copying files and installing dependencies..."
-# Copy bot code
+# Copy bot code (preserves .env and database)
 cp -r "$REPO_DIR/bot" "$APP_DIR/"
 cp "$REPO_DIR/runBot.py" "$APP_DIR/"
 cp "$REPO_DIR/requirements.txt" "$APP_DIR/"
 cp "$REPO_DIR/update.sh" "$APP_DIR/"
+# Only copy .env.example if .env doesn't exist
+if [ ! -f "$APP_DIR/.env" ] && [ -f "$REPO_DIR/.env.example" ]; then
+    cp "$REPO_DIR/.env.example" "$APP_DIR/.env"
+    print_warn ".env file created from template — configure it!"
+fi
 
 # Install dependencies
 if [ -d "$APP_DIR/venv" ]; then
