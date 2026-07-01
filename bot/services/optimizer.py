@@ -357,21 +357,13 @@ class QualityOptimizer:
 
         info = self._probe_file(file_path)
         if not info:
-            return False
+            # If we can't probe, check extension only
+            return file_path.endswith(".mp4")
 
-        # Already H.264 MP4 with AAC audio
-        if format_type in ("mp4", "best"):
-            return (
-                info["video_codec"] in ("h264", "avc1")
-                and info["audio_codec"] in ("aac", "mp4a")
-                and file_path.endswith(".mp4")
-            )
-
-        if format_type == "mkv":
-            return (
-                info["video_codec"] in ("h264", "avc1")
-                and file_path.endswith(".mkv")
-            )
+        # Already H.264 - skip re-encoding regardless of container
+        if info["video_codec"] in ("h264", "avc1"):
+            logger.info(f"File already H.264 ({info['video_codec']}), skipping optimization")
+            return True
 
         return False
 

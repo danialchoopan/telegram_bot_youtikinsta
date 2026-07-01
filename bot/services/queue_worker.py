@@ -71,6 +71,7 @@ class QueueWorker:
         user_id = item["user_id"]
         url = item["url"]
         format_type = item["selected_format"]
+        platform = item.get("platform", "youtube")
         lang = self._get_user_lang(user_id)
 
         self.db.update_queue_status(queue_id, "processing")
@@ -88,7 +89,8 @@ class QueueWorker:
             file_path, info = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: self.downloader.download(
                     url, format_type,
-                    progress_callback=lambda d: self._on_download_progress(d, download_progress)
+                    progress_callback=lambda d: self._on_download_progress(d, download_progress),
+                    platform=platform,
                 )
             )
 
@@ -148,11 +150,15 @@ class QueueWorker:
             self._cleanup(file_path, optimized_path)
 
         except Exception as e:
-            logger.error(f"Download failed: {e}")
-            self.db.update_download(download_id, status="failed", error_message=str(e))
+            logger.error(f"Download failed: {e}", exc_info=True)
+            error_msg = str(e)
+            # Clean up yt-dlp error messages
+            if "ERROR:" in error_msg:
+                error_msg = error_msg.split("ERROR:")[-1].strip()
+            self.db.update_download(download_id, status="failed", error_message=error_msg)
             self.db.update_queue_status(queue_id, "failed")
             if msg_id:
-                await self._safe_edit(user_id, msg_id, f"❌ Error: {str(e)[:200]}")
+                await self._safe_edit(user_id, msg_id, f"❌ Error:\n{error_msg[:500]}")
             else:
                 await self._safe_send(user_id, f"❌ Error: {str(e)[:200]}")
             self._cleanup_files(item)

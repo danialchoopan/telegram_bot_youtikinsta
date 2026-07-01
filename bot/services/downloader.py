@@ -39,31 +39,13 @@ class Downloader:
         """Initialize downloader and ensure download directory exists."""
         Config.ensure_directories()
 
-    def download(self, url: str, format_type: str, progress_callback=None) -> tuple[str, dict]:
-        """
-        Download media from URL.
+    def download(self, url: str, format_type: str, progress_callback=None, platform: str = "youtube") -> tuple[str, dict]:
+        """Download media from URL."""
+        logger.info(f"Downloading: {url} as {format_type} (platform: {platform})")
 
-        Args:
-            url: Media URL to download
-            format_type: Output format (mp4, mkv, mp3, m4a, mp4_720, best)
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            tuple: (file_path, info_dict)
-
-        Raises:
-            FileNotFoundError: If downloaded file cannot be found
-            Exception: If download fails
-        """
-        logger.info(f"Downloading: {url} as {format_type}")
-
-        # Generate unique filename to avoid collisions
         filename = f"dl_{generate_random_string(12)}"
+        ydl_opts = self._build_opts(format_type, filename, platform)
 
-        # Build yt-dlp options based on format
-        ydl_opts = self._build_opts(format_type, filename)
-
-        # Add progress hook if callback provided
         if progress_callback:
             ydl_opts["progress_hooks"] = [lambda d: self._progress_hook(d, progress_callback)]
 
@@ -95,89 +77,74 @@ class Downloader:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
-    def _build_opts(self, format_type: str, filename: str) -> dict:
+    def _build_opts(self, format_type: str, filename: str, platform: str = "youtube") -> dict:
         """
         Build yt-dlp options for specific format.
 
-        Each format has optimized settings for quality and compatibility.
+        For TikTok/Instagram: use 'best' (merged stream, no format filtering)
+        For YouTube: use height-based format selection
         """
-        # Base output template with random filename
         outtmpl = str(Config.DOWNLOAD_PATH / f"{filename}.%(ext)s")
 
-        # Common options shared across all formats
         base_opts = {
             "outtmpl": outtmpl,
             "quiet": True,
             "no_warnings": True,
-            "merge_output_format": "mp4",
         }
 
-        # Add proxy if configured
         if Config.DOWNLOAD_PROXY:
             base_opts["proxy"] = Config.DOWNLOAD_PROXY
 
-        # MP3: Extract audio and convert to MP3
+        # Audio formats
         if format_type == "mp3":
             return {
                 **base_opts,
                 "format": "bestaudio/best",
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "192",
-                }],
+                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
             }
-
-        # M4A: Extract audio and convert to M4A (AAC)
         if format_type == "m4a":
             return {
                 **base_opts,
                 "format": "bestaudio/best",
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "m4a",
-                    "preferredquality": "128",
-                }],
+                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a", "preferredquality": "128"}],
             }
 
-        # MKV: Download video in MKV container
-        if format_type == "mkv":
-            height = self._get_height_for_format(format_type)
+        # TikTok/Instagram: just get best available (these have merged streams)
+        if platform in ("tiktok", "instagram"):
             return {
                 **base_opts,
-                "format": f"bestvideo[height<={height}]+bestaudio/best[height<={height}]",
-                "merge_output_format": "mkv",
-            }
-
-        # MP4 720p: Download at 720p max
-        if format_type == "mp4_720":
-            return {
-                **base_opts,
-                "format": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+                "format": "best",
                 "merge_output_format": "mp4",
             }
 
-        # Best: Auto-select optimal format for Telegram
+        # YouTube and others: height-based selection
         if format_type == "best":
             return {
                 **base_opts,
-                "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
                 "merge_output_format": "mp4",
-                "format_sort": ["res:1080", "codec:h264", "size"],
             }
 
-        # Default MP4: Download at specified height
-        height = self._get_height_for_format(format_type)
+        if format_type == "mkv":
+            return {
+                **base_opts,
+                "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+                "merge_output_format": "mkv",
+            }
+
+        if format_type == "mp4_720":
+            return {
+                **base_opts,
+                "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+                "merge_output_format": "mp4",
+            }
+
+        # Default MP4
         return {
             **base_opts,
-            "format": f"bestvideo[height<={height}]+bestaudio/best[height<={height}]",
+            "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
             "merge_output_format": "mp4",
         }
-
-    def _get_height_for_format(self, format_type: str) -> int:
-        """Map format type to maximum height."""
-        mapping = {"mp4": 1080, "mkv": 1080, "mp4_720": 720}
-        return mapping.get(format_type, Config.MAX_RESOLUTION)
 
     def _progress_hook(self, data: dict, callback):
         """

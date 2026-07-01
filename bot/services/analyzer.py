@@ -57,11 +57,16 @@ class MediaAnalyzer:
             ValueError: If the URL cannot be analyzed
         """
         try:
-            with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
+            # Add timeout for TikTok (long URLs can hang)
+            timeout_opts = dict(self.ydl_opts)
+            if "tiktok" in url.lower():
+                timeout_opts["socket_timeout"] = 30
+
+            with yt_dlp.YoutubeDL(timeout_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 return self._format_info(info, url)
         except Exception as e:
-            raise ValueError(f"Could not analyze link: {str(e)}")
+            raise ValueError(f"Could not analyze link: {str(e)[:300]}")
 
     def _format_info(self, info: dict, url: str) -> dict:
         """
@@ -121,36 +126,33 @@ class MediaAnalyzer:
             "original_size": original_size,
             "available_resolutions": available_resolutions,
             "is_4k": is_4k,
-            "formats_available": self._get_format_options(media_type, original_height),
+            "formats_available": self._get_format_options(media_type, original_height, platform),
         }
 
-    def _get_format_options(self, media_type: str, max_height: int) -> list:
-        """
-        Generate format options based on media properties.
-
-        For audio-only content, only audio formats are shown.
-        For video content, shows video formats up to the max resolution.
-        """
+    def _get_format_options(self, media_type: str, max_height: int, platform: str = "youtube") -> list:
+        """Generate format options based on platform and media type."""
         if media_type == "audio":
-            return ["mp3", "m4a"]
+            return [("mp3", "🎵 MP3 Audio"), ("m4a", "🎶 M4A Audio")]
 
+        # TikTok/Instagram: simple options (these platforms have limited formats)
+        if platform in ("tiktok", "instagram"):
+            return [
+                ("best", "⚡ Download Full Quality"),
+                ("mp3", "🎵 MP3 Audio"),
+            ]
+
+        # YouTube and others: full options
         options = []
-
-        # Cap height at MAX_RESOLUTION if 4K blocking is enabled
         capped_height = min(max_height, Config.MAX_RESOLUTION) if Config.ENABLE_4K_BLOCKING else max_height
 
-        # Add video format options based on available resolution
         if capped_height >= 1080:
             options.append(("mp4", "📹 MP4 1080p"))
             options.append(("mkv", "🎬 MKV 1080p"))
         if capped_height >= 720:
             options.append(("mp4_720", "📹 MP4 720p"))
 
-        # Always offer audio-only options
         options.append(("mp3", "🎵 MP3 Audio"))
         options.append(("m4a", "🎶 M4A Audio"))
-
-        # Always offer "Best for Telegram" option
         options.append(("best", "⚡ Best for Telegram"))
 
         return options
