@@ -219,34 +219,50 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await update.message.reply_text(text)
 
-    # Resolution toggle
+    # Resolution — show selection buttons
     elif text == "📏 Resolution":
-        new = "720" if Config.MAX_RESOLUTION == 1080 else "1080"
-        Config.MAX_RESOLUTION = int(new)
-        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", new)
-        await update.message.reply_text(f"📏 Resolution: {new}p")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("720p" + (" ✅" if Config.MAX_RESOLUTION == 720 else ""), callback_data="setres_720"),
+             InlineKeyboardButton("1080p" + (" ✅" if Config.MAX_RESOLUTION == 1080 else ""), callback_data="setres_1080")],
+        ])
+        await update.message.reply_text(f"📏 Resolution (current: {Config.MAX_RESOLUTION}p)\n\nSelect:", reply_markup=kb)
 
-    # Format toggle
+    # Format — show selection buttons
     elif text == "🎯 Format":
-        fmts = ["mp4", "mkv", "mp3"]
-        idx = fmts.index(Config.DEFAULT_FORMAT) if Config.DEFAULT_FORMAT in fmts else 0
-        Config.DEFAULT_FORMAT = fmts[(idx + 1) % len(fmts)]
-        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", Config.DEFAULT_FORMAT)
-        await update.message.reply_text(f"🎯 Format: {Config.DEFAULT_FORMAT.upper()}")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("MP4" + (" ✅" if Config.DEFAULT_FORMAT == "mp4" else ""), callback_data="setfmt_mp4"),
+             InlineKeyboardButton("MKV" + (" ✅" if Config.DEFAULT_FORMAT == "mkv" else ""), callback_data="setfmt_mkv")],
+            [InlineKeyboardButton("MP3" + (" ✅" if Config.DEFAULT_FORMAT == "mp3" else ""), callback_data="setfmt_mp3")],
+        ])
+        await update.message.reply_text(f"🎯 Format (current: {Config.DEFAULT_FORMAT.upper()})\n\nSelect:", reply_markup=kb)
 
-    # 4K Block toggle
+    # 4K Block — show on/off buttons
     elif text == "🚫 4K Block":
-        Config.ENABLE_4K_BLOCKING = not Config.ENABLE_4K_BLOCKING
-        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", str(Config.ENABLE_4K_BLOCKING).lower())
-        state = "ON" if Config.ENABLE_4K_BLOCKING else "OFF"
-        await update.message.reply_text(f"🚫 4K Block: {state}")
+        state = "✅ ON" if Config.ENABLE_4K_BLOCKING else "❌ OFF"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("ON ✅" if Config.ENABLE_4K_BLOCKING else "ON", callback_data="set4k_on"),
+             InlineKeyboardButton("OFF ✅" if not Config.ENABLE_4K_BLOCKING else "OFF", callback_data="set4k_off")],
+        ])
+        await update.message.reply_text(f"🚫 4K Block (current: {state})\n\nSelect:", reply_markup=kb)
 
-    # Auto-optimize toggle
+    # Optimize — show on/off buttons
     elif text == "⚡ Optimize":
-        Config.AUTO_OPTIMIZE = not Config.AUTO_OPTIMIZE
-        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", str(Config.AUTO_OPTIMIZE).lower())
-        state = "ON" if Config.AUTO_OPTIMIZE else "OFF"
-        await update.message.reply_text(f"⚡ Auto-Optimize: {state}")
+        state = "✅ ON" if Config.AUTO_OPTIMIZE else "❌ OFF"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("ON ✅" if Config.AUTO_OPTIMIZE else "ON", callback_data="setopt_on"),
+             InlineKeyboardButton("OFF ✅" if not Config.AUTO_OPTIMIZE else "OFF", callback_data="setopt_off")],
+        ])
+        await update.message.reply_text(f"⚡ Auto-Optimize (current: {state})\n\nSelect:", reply_markup=kb)
+
+    # Bitrate — show selection buttons
+    elif text == "🎚️ Bitrate":
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"2 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 2 else ""), callback_data="setbit_2"),
+             InlineKeyboardButton(f"4 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 4 else ""), callback_data="setbit_4")],
+            [InlineKeyboardButton(f"6 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 6 else ""), callback_data="setbit_6"),
+             InlineKeyboardButton(f"8 Mbps" + (" ✅" if Config.VIDEO_BITRATE_MBPS == 8 else ""), callback_data="setbit_8")],
+        ])
+        await update.message.reply_text(f"🎚️ Video Bitrate (current: {Config.VIDEO_BITRATE_MBPS} Mbps)\n\nSelect:", reply_markup=kb)
 
     # Bitrate toggle
     elif text == "🎚️ Bitrate":
@@ -677,6 +693,52 @@ async def setabit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
+# Settings Inline Keyboard Callbacks
+# ==========================================
+
+async def setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle settings inline keyboard button taps."""
+    query = update.callback_query
+    await query.answer()
+    if not _is_admin(query.from_user.id):
+        return
+
+    data = query.data
+
+    if data.startswith("setres_"):
+        val = int(data.replace("setres_", ""))
+        Config.MAX_RESOLUTION = val
+        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", str(val))
+        await query.edit_message_text(f"✅ Resolution set to {val}p")
+
+    elif data.startswith("setfmt_"):
+        val = data.replace("setfmt_", "")
+        Config.DEFAULT_FORMAT = val
+        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", val)
+        await query.edit_message_text(f"✅ Format set to {val.upper()}")
+
+    elif data.startswith("set4k_"):
+        val = data.replace("set4k_", "") == "on"
+        Config.ENABLE_4K_BLOCKING = val
+        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", str(val).lower())
+        state = "ON" if val else "OFF"
+        await query.edit_message_text(f"✅ 4K Block: {state}")
+
+    elif data.startswith("setopt_"):
+        val = data.replace("setopt_", "") == "on"
+        Config.AUTO_OPTIMIZE = val
+        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", str(val).lower())
+        state = "ON" if val else "OFF"
+        await query.edit_message_text(f"✅ Auto-Optimize: {state}")
+
+    elif data.startswith("setbit_"):
+        val = int(data.replace("setbit_", ""))
+        Config.VIDEO_BITRATE_MBPS = val
+        _update_env(Config.BASE_DIR / ".env", "VIDEO_BITRATE_MBPS", str(val))
+        await query.edit_message_text(f"✅ Video Bitrate: {val} Mbps")
+
+
+# ==========================================
 # Register handlers
 # ==========================================
 
@@ -692,6 +754,7 @@ def get_handlers():
         CommandHandler("setbit", setbit_command),
         CommandHandler("setabit", setabit_command),
         CallbackQueryHandler(language_callback, pattern=r"^lang_"),
+        CallbackQueryHandler(setting_callback, pattern=r"^set(res|fmt|4k|opt|bit)_"),
         # Admin text commands from reply keyboard
         MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(
             r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^📏 Resolution|^🎯 Format|"

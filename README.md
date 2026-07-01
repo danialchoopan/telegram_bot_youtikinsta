@@ -290,10 +290,21 @@ Admin gets a **reply keyboard** at the bottom of the chat:
 ```
 
 **How it works:**
-- **Buttons** toggle settings instantly (tap = change)
-- **Commands** let you type specific values (e.g., `/setres 720`)
-- **🎛️ Settings** shows all current values with help text
+- **Tap button** = shows option buttons to select from
+- **Type command** = set exact value via text
+- **🎛️ Settings** = shows all current values with help text
 - **Admins have NO download limits**
+
+**Example — Setting Resolution:**
+1. Tap "📏 Resolution"
+2. Bot shows: `📏 Resolution (current: 1080p)`
+3. Buttons appear: `[720p] [1080p ✅]`
+4. Tap 720p → `✅ Resolution set to 720p`
+
+**Example — Setting Format:**
+1. Tap "🎯 Format"
+2. Buttons appear: `[MP4 ✅] [MKV]` / `[MP3]`
+3. Tap MKV → `✅ Format set to MKV`
 
 ## Whitelist Mode
 
