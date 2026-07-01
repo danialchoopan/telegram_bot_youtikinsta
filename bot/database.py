@@ -166,6 +166,16 @@ class Database:
                     value TEXT
                 );
             """)
+        self._migrate()
+
+    def _migrate(self):
+        """Run database migrations for schema updates."""
+        with self._cursor() as cur:
+            # Add title column to downloads if missing
+            try:
+                cur.execute("ALTER TABLE downloads ADD COLUMN title TEXT DEFAULT ''")
+            except Exception:
+                pass  # Column already exists
 
     # ==========================================
     # User Management Methods
@@ -281,14 +291,9 @@ class Database:
             return cur.fetchone()["cnt"]
 
     def can_download(self, user_id: int) -> bool:
-        """
-        Check if user is allowed to download.
-
-        Returns False if:
-        - User is banned
-        - User doesn't exist
-        - Daily download limit reached
-        """
+        """Check if user can download. Admins have no limits."""
+        if self.is_admin(user_id):
+            return True
         if self.is_user_banned(user_id):
             return False
         user = self.get_user(user_id)
@@ -301,18 +306,13 @@ class Database:
     # Download Management Methods
     # ==========================================
 
-    def add_download(self, user_id: int, url: str, platform: str, selected_format: str) -> int:
-        """
-        Create a new download record.
-
-        Returns:
-            int: The download_id of the new record
-        """
+    def add_download(self, user_id: int, url: str, platform: str, selected_format: str, title: str = "") -> int:
+        """Create a new download record."""
         with self._cursor() as cur:
             cur.execute(
-                """INSERT INTO downloads (user_id, url, platform, selected_format, status)
-                   VALUES (?, ?, ?, ?, 'queued')""",
-                (user_id, url, platform, selected_format),
+                """INSERT INTO downloads (user_id, url, platform, selected_format, status, title)
+                   VALUES (?, ?, ?, ?, 'queued', ?)""",
+                (user_id, url, platform, selected_format, title[:100] if title else ""),
             )
             return cur.lastrowid
 
@@ -326,7 +326,7 @@ class Database:
             "media_type", "original_quality", "output_quality",
             "original_size_mb", "optimized_size_mb", "file_path",
             "status", "completion_time", "optimization_time_seconds",
-            "error_message", "retry_count", "was_4k_detected",
+            "error_message", "retry_count", "was_4k_detected", "title",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
@@ -343,6 +343,16 @@ class Database:
                 "UPDATE users SET total_downloads = total_downloads + 1, total_size_downloaded = total_size_downloaded + ? WHERE user_id = ?",
                 (size_mb, user_id),
             )
+
+    def set_daily_limit_all(self, limit: int):
+        """Set daily download limit for ALL users."""
+        with self._cursor() as cur:
+            cur.execute("UPDATE users SET download_limit_per_day = ? WHERE is_admin = 0", (limit,))
+
+    def set_daily_limit_user(self, user_id: int, limit: int):
+        """Set daily download limit for a specific user."""
+        with self._cursor() as cur:
+            cur.execute("UPDATE users SET download_limit_per_day = ? WHERE user_id = ?", (limit, user_id))
 
     # ==========================================
     # Queue Management Methods

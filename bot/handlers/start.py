@@ -27,7 +27,7 @@ ADMIN_KEYBOARD = ReplyKeyboardMarkup(
         [KeyboardButton("🎛️ Settings"), KeyboardButton("🚫 Ban"), KeyboardButton("✅ Unban")],
         [KeyboardButton("➕ Whitelist"), KeyboardButton("➖ Unwhitelist")],
         [KeyboardButton("👑 Set Admin"), KeyboardButton("🗑️ Clear Queue")],
-        [KeyboardButton("🔙 Main Menu")],
+        [KeyboardButton("📏 Daily Limit"), KeyboardButton("🔙 Main Menu")],
     ],
     resize_keyboard=True,
 )
@@ -51,22 +51,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
             "📖 Help - Admin\n━━━━━━━━━━━━━━━━━━━\n\n"
             "📥 Send any link to download\n\n"
-            "⌨️ Admin Keyboard Buttons:\n"
+            "⌨️ Admin Keyboard:\n"
             "📊 Stats - Bot statistics\n"
             "👥 Users - User list\n"
-            "📥 Downloads - Recent downloads\n"
+            "📥 Downloads - History with titles\n"
             "🎛️ Settings - Quality settings\n"
-            "🚫 Ban - Ban a user\n"
-            "✅ Unban - Unban a user\n"
-            "➕ Whitelist - Add user to whitelist\n"
-            "➖ Unwhitelist - Remove from whitelist\n"
+            "🚫 Ban / ✅ Unban - User management\n"
+            "➕ Whitelist / ➖ Unwhitelist\n"
             "👑 Set Admin - Make user admin\n"
             "🗑️ Clear Queue - Clear stuck queue\n"
+            "📏 Daily Limit - Set download limits\n"
             "🔙 Main Menu - Show keyboard\n\n"
             "📋 Commands:\n"
             "/start - Main menu\n"
             "/settings - Your preferences\n"
-            "/help - Show this message"
+            "/setlimit <number> - Set daily limit\n"
+            "/help - This message\n\n"
+            "⚡ Admins have NO download limits"
         )
     else:
         text = (
@@ -176,6 +177,10 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
             count = cur.rowcount
         await update.message.reply_text(f"🗑️ Cleared {count} items from queue.")
 
+    # Daily Limit
+    elif text == "📏 Daily Limit":
+        await _send_daily_limit(update, user_id)
+
     # Main Menu
     elif text == "🔙 Main Menu":
         await update.message.reply_text("Main menu. Send a link to download.", reply_markup=ADMIN_KEYBOARD)
@@ -242,7 +247,7 @@ async def _send_downloads(update: Update, user_id: int):
     db = Database()
     with db._cursor() as cur:
         cur.execute(
-            "SELECT d.selected_format, d.status, d.original_size_mb, d.optimized_size_mb, u.username "
+            "SELECT d.title, d.selected_format, d.status, d.original_size_mb, d.optimized_size_mb, u.username "
             "FROM downloads d LEFT JOIN users u ON d.user_id = u.user_id "
             "ORDER BY d.request_time DESC LIMIT 10"
         )
@@ -255,9 +260,10 @@ async def _send_downloads(update: Update, user_id: int):
     lines = ["📥 Recent Downloads:\n"]
     for d in downloads:
         icon = {"completed": "✅", "failed": "❌", "downloading": "📥", "uploading": "📤"}.get(d["status"], "⏳")
+        title = (d["title"] or "Unknown")[:25]
         user = d["username"] or "?"
-        size = f"{d['original_size_mb'] or 0}MB→{d['optimized_size_mb'] or 0}MB" if d["optimized_size_mb"] else f"{d['original_size_mb'] or 0}MB"
-        lines.append(f"{icon} {d['selected_format'].upper()} | {size} | @{user}")
+        size = f"{d['original_size_mb'] or 0}→{d['optimized_size_mb'] or 0}MB" if d["optimized_size_mb"] else f"{d['original_size_mb'] or 0}MB"
+        lines.append(f"{icon} {title} | {d['selected_format'].upper()} | {size}")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -272,6 +278,22 @@ async def _send_settings(update: Update, user_id: int):
         f"📹 Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps\n"
         f"🎵 Audio: {Config.AUDIO_BITRATE_KBPS} kbps\n"
         f"📊 Daily Limit: {Config.MAX_DAILY_DOWNLOADS_PER_USER}/user"
+    )
+    await update.message.reply_text(text)
+
+
+async def _send_daily_limit(update: Update, user_id: int):
+    db = Database()
+    with db._cursor() as cur:
+        cur.execute("SELECT AVG(download_limit_per_day) as avg_limit FROM users WHERE is_admin = 0")
+        avg = cur.fetchone()["avg_limit"] or 10
+
+    text = (
+        f"📏 Daily Download Limit\n━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Current average: {avg:.0f} downloads/user\n"
+        f"Admins: Unlimited\n\n"
+        f"Send a number to set limit for ALL users:\n"
+        f"Example: /setlimit 20"
     )
     await update.message.reply_text(text)
 
@@ -443,6 +465,20 @@ async def admin_setadmin_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("Usage: /setadmin_<user_id>")
 
 
+async def setlimit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setlimit <number>"""
+    user_id = update.effective_user.id
+    if not _is_admin(user_id):
+        return
+
+    try:
+        limit = int(update.message.text.split()[1])
+        Database().set_daily_limit_all(limit)
+        await update.message.reply_text(f"✅ Daily limit set to {limit} for all users.\nAdmins remain unlimited.")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setlimit <number>\nExample: /setlimit 20")
+
+
 # ==========================================
 # Register handlers
 # ==========================================
@@ -451,9 +487,10 @@ def get_handlers():
     return [
         CommandHandler("start", start_command),
         CommandHandler("help", help_command),
+        CommandHandler("setlimit", setlimit_command),
         CallbackQueryHandler(language_callback, pattern=r"^lang_"),
         # Admin text commands from reply keyboard
-        MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^🚫 Ban|^✅ Unban|^➕ Whitelist|^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^🔙 Main Menu$"), admin_message_handler),
+        MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r"^📊 Stats|^👥 Users|^📥 Downloads|^🎛️ Settings|^🚫 Ban|^✅ Unban|^➕ Whitelist|^➖ Unwhitelist|^👑 Set Admin|^🗑️ Clear Queue|^📏 Daily Limit|^🔙 Main Menu$"), admin_message_handler),
         # Admin slash commands from button taps
         MessageHandler(filters.TEXT & filters.Regex(r"^/ban_\d+$"), admin_ban_command),
         MessageHandler(filters.TEXT & filters.Regex(r"^/unban_\d+$"), admin_unban_command),

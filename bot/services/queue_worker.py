@@ -98,14 +98,16 @@ class QueueWorker:
             if msg_id:
                 await self._safe_edit(user_id, msg_id, "🔄 Optimizing for Telegram...")
 
-            # Record original file size
+            # Record original file size and title
             original_size = os.path.getsize(file_path)
             height = info.get("height")
             quality_label = f"{height}p" if height else "audio"
+            title = info.get("title", "")[:100]
             self.db.update_download(
                 download_id, status="optimizing",
                 original_size_mb=round(original_size / (1024 * 1024), 2),
                 original_quality=quality_label,
+                title=title,
             )
 
             # Stage 2: Optimize

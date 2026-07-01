@@ -26,10 +26,10 @@ analyzer = MediaAnalyzer()
 _url_store = {}
 
 
-def _store_url(url: str, platform: str) -> str:
+def _store_url(url: str, platform: str, title: str = "") -> str:
     """Store URL and return short ID."""
     short_id = generate_random_string(8)
-    _url_store[short_id] = {"url": url, "platform": platform}
+    _url_store[short_id] = {"url": url, "platform": platform, "title": title}
     return short_id
 
 
@@ -91,8 +91,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_message(lang, "error", error=str(e)[:300]))
         return
 
-    # Store URL with short ID
-    short_id = _store_url(url, platform)
+    # Store URL with short ID and title
+    short_id = _store_url(url, platform, info.get("title", ""))
 
     # Handle 4K content
     if info["is_4k"] and Config.ENABLE_4K_BLOCKING:
@@ -135,7 +135,7 @@ async def handle_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE, ur
         title = info.get("title", "Unknown Playlist")
         video_count = len(info.get("formats", [])) or 1
 
-        short_id = _store_url(url, "youtube")
+        short_id = _store_url(url, "youtube", info.get("title", ""))
 
         keyboard = [
             [InlineKeyboardButton("📹 MP4 All", callback_data=f"pl_{short_id}|mp4"),
@@ -173,7 +173,7 @@ async def playlist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     platform = url_info["platform"]
     url = url_info["url"]
 
-    download_id = db.add_download(user_id, url, platform, format_type)
+    download_id = db.add_download(user_id, url, platform, format_type, title=url_info.get("title", ""))
     db.add_to_queue(user_id, download_id, priority=1 if db.is_admin(user_id) else 5)
     queue_pos = db.get_user_position_in_queue(user_id)
 
@@ -225,7 +225,7 @@ async def format_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     format_name = format_names.get(format_type, format_type)
 
-    download_id = db.add_download(user_id, url, platform, format_type)
+    download_id = db.add_download(user_id, url, platform, format_type, title=url_info.get("title", ""))
     db.add_to_queue(user_id, download_id, priority=1 if db.is_admin(user_id) else 5)
     queue_pos = db.get_user_position_in_queue(user_id)
 
