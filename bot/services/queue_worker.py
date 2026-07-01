@@ -234,13 +234,17 @@ class QueueWorker:
                 try:
                     # Download thumbnail if available
                     if thumbnail_url:
+                        logger.info(f"Downloading thumbnail: {thumbnail_url[:80]}...")
                         thumb_path = await asyncio.get_event_loop().run_in_executor(
                             None, lambda: self._download_thumbnail(thumbnail_url)
                         )
                         if thumb_path:
                             thumb_file = open(thumb_path, "rb")
+                            logger.info(f"Thumbnail ready: {thumb_path}")
+                        else:
+                            logger.warning("Thumbnail download returned None")
                 except Exception as e:
-                    logger.warning(f"Thumbnail download failed: {e}")
+                    logger.warning(f"Thumbnail setup failed: {e}")
 
                 try:
                     with open(file_path, "rb") as f:
@@ -267,18 +271,39 @@ class QueueWorker:
                 raise
 
     def _download_thumbnail(self, url: str) -> str | None:
-        """Download thumbnail image and return path."""
+        """Download and resize thumbnail for Telegram (max 320px, JPEG)."""
         import requests
-        thumb_path = str(Config.OPTIMIZED_PATH / f"thumb_{generate_random_string(8)}.jpg")
+        from io import BytesIO
         try:
+            # Download thumbnail
             response = requests.get(url, timeout=10)
-            if response.status_code == 200:
+            if response.status_code != 200:
+                logger.warning(f"Thumbnail download failed: HTTP {response.status_code}")
+                return None
+
+            # Resize to 320px width for Telegram
+            try:
+                from PIL import Image
+                img = Image.open(BytesIO(response.content))
+                img.thumbnail((320, 320))
+                # Convert to RGB if RGBA (Telegram requires JPEG)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                thumb_path = str(Config.OPTIMIZED_PATH / f"thumb_{generate_random_string(8)}.jpg")
+                img.save(thumb_path, "JPEG", quality=85)
+                logger.info(f"Thumbnail saved: {thumb_path}")
+                return thumb_path
+            except ImportError:
+                # No Pillow — save raw thumbnail
+                thumb_path = str(Config.OPTIMIZED_PATH / f"thumb_{generate_random_string(8)}.jpg")
                 with open(thumb_path, "wb") as f:
                     f.write(response.content)
+                logger.info(f"Thumbnail saved (raw): {thumb_path}")
                 return thumb_path
+
         except Exception as e:
             logger.warning(f"Thumbnail download failed: {e}")
-        return None
+            return None
 
     async def _safe_send(self, user_id: int, text: str):
         """Send message, return message object or None."""
