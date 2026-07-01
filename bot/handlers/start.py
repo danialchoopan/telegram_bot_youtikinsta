@@ -83,13 +83,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "➕ Whitelist / ➖ Unwhitelist\n"
             "👑 Set Admin\n"
             "🗑️ Clear Queue\n"
-            "📏 Daily Limit - Set download limit\n"
+            "📏 Daily Limit\n"
             "🔙 Main Menu\n\n"
-            "📋 Commands:\n"
-            "/start - Main menu\n"
-            "/settings - Your preferences\n"
-            "/setlimit <number> - Set daily limit\n"
-            "/help - This message\n\n"
+            "📋 Setting Commands:\n"
+            "/setres 720 or 1080\n"
+            "/setfmt mp4 or mkv or mp3\n"
+            "/set4k on or off\n"
+            "/setopt on or off\n"
+            "/setbit 2 or 4 or 6 or 8\n"
+            "/setabit 128 or 192 or 320\n"
+            "/setlimit <number>\n\n"
             "⚡ Admins have NO download limits"
         )
     else:
@@ -114,25 +117,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = Database()
     user = update.effective_user
-    db.get_or_create_user(user.id, user.username, user.full_name)
+    user_data = db.get_or_create_user(user.id, user.username, user.full_name)
 
     if user.id == Config.ADMIN_USER_ID and not db.is_admin(user.id):
         db.set_admin(user.id, True)
 
-    if _is_admin(user.id):
-        await update.message.reply_text(
-            "👋 Welcome back boss!\n\nSend me a link to download.",
-            reply_markup=ADMIN_KEYBOARD,
-        )
-    else:
-        keyboard = [
-            [InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa"),
-             InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
-        ]
-        await update.message.reply_text(
-            "👋 Welcome to Media Downloader Bot!\n\nSend me a link to download.\n\nChoose your language:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
+    # Always show language selection first
+    keyboard = [
+        [InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa"),
+         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+    ]
+    await update.message.reply_text(
+        "👋 Welcome!\n\nChoose your language:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -141,7 +139,38 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = query.data.replace("lang_", "")
     db = Database()
     db.update_user_language(query.from_user.id, lang)
-    await query.edit_message_text(get_message(lang, "language_selected"))
+
+    user_id = query.from_user.id
+
+    if _is_admin(user_id):
+        # Show admin welcome dashboard with stats
+        await _show_admin_welcome(query, user_id)
+    else:
+        await query.edit_message_text(get_message(lang, "language_selected"))
+
+
+async def _show_admin_welcome(query, user_id: int):
+    """Show admin welcome dashboard with stats."""
+    db = Database()
+    stats = db.get_bot_stats()
+    wl_on = db.is_whitelist_enabled()
+    wl_count = len(db.get_whitelisted_users())
+
+    text = (
+        f"👋 Welcome back boss!\n━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📊 Bot Status:\n"
+        f"👥 Total Users: {stats['total_users']}\n"
+        f"📥 Total Downloads: {stats['total_downloads']}\n"
+        f"💾 Data Processed: {stats['total_size_gb']} GB\n"
+        f"✅ Success Rate: {stats['success_rate']}%\n"
+        f"🔄 Queue: {stats['active_queue']} items\n"
+        f"🚫 4K Blocked: {stats.get('blocked_4k', 0)}\n"
+        f"🔒 Whitelist: {'ON' if wl_on else 'OFF'} ({wl_count})\n\n"
+        f"⚡ You have unlimited downloads\n"
+        f"📋 Send a link to download or use the keyboard below"
+    )
+
+    await query.edit_message_text(text, reply_markup=ADMIN_KEYBOARD)
 
 
 # ==========================================
@@ -168,9 +197,27 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "📥 Downloads":
         await _send_downloads(update, user_id)
 
-    # Settings overview
+    # Settings overview — shows current values with instructions
     elif text == "🎛️ Settings":
-        await _send_settings(update, user_id)
+        text = (
+            f"🎛️ Settings\n━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📏 Resolution: {Config.MAX_RESOLUTION}p\n"
+            f"   → Type: /setres 720 or /setres 1080\n\n"
+            f"🎯 Format: {Config.DEFAULT_FORMAT.upper()}\n"
+            f"   → Type: /setfmt mp4 or mkv or mp3\n\n"
+            f"🚫 4K Block: {'✅ ON' if Config.ENABLE_4K_BLOCKING else '❌ OFF'}\n"
+            f"   → Type: /set4k on or /set4k off\n\n"
+            f"⚡ Auto-Optimize: {'✅ ON' if Config.AUTO_OPTIMIZE else '❌ OFF'}\n"
+            f"   → Type: /setopt on or /setopt off\n\n"
+            f"🎚️ Video Bitrate: {Config.VIDEO_BITRATE_MBPS} Mbps\n"
+            f"   → Type: /setbit 2 or 4 or 6 or 8\n\n"
+            f"🎵 Audio Bitrate: {Config.AUDIO_BITRATE_KBPS} kbps\n"
+            f"   → Type: /setabit 128 or 192 or 320\n\n"
+            f"📊 Daily Limit: {Config.MAX_DAILY_DOWNLOADS_PER_USER}/user\n"
+            f"   → Type: /setlimit <number>\n\n"
+            f"⌨️ Or use buttons to toggle quickly"
+        )
+        await update.message.reply_text(text)
 
     # Resolution toggle
     elif text == "📏 Resolution":
@@ -539,6 +586,96 @@ async def setlimit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /setlimit <number>\nExample: /setlimit 20")
 
 
+async def setres_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setres <720|1080>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = int(update.message.text.split()[1])
+        if val not in (720, 1080):
+            raise ValueError
+        Config.MAX_RESOLUTION = val
+        _update_env(Config.BASE_DIR / ".env", "MAX_RESOLUTION", str(val))
+        await update.message.reply_text(f"📏 Resolution set to {val}p")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setres <720|1080>\nExample: /setres 1080")
+
+
+async def setfmt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setfmt <mp4|mkv|mp3>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = update.message.text.split()[1].lower()
+        if val not in ("mp4", "mkv", "mp3"):
+            raise ValueError
+        Config.DEFAULT_FORMAT = val
+        _update_env(Config.BASE_DIR / ".env", "DEFAULT_FORMAT", val)
+        await update.message.reply_text(f"🎯 Format set to {val.upper()}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setfmt <mp4|mkv|mp3>\nExample: /setfmt mp4")
+
+
+async def set4k_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /set4k <on|off>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = update.message.text.split()[1].lower()
+        if val not in ("on", "off"):
+            raise ValueError
+        Config.ENABLE_4K_BLOCKING = val == "on"
+        _update_env(Config.BASE_DIR / ".env", "ENABLE_4K_BLOCKING", val)
+        await update.message.reply_text(f"🚫 4K Block: {'ON' if Config.ENABLE_4K_BLOCKING else 'OFF'}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /set4k <on|off>\nExample: /set4k on")
+
+
+async def setopt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setopt <on|off>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = update.message.text.split()[1].lower()
+        if val not in ("on", "off"):
+            raise ValueError
+        Config.AUTO_OPTIMIZE = val == "on"
+        _update_env(Config.BASE_DIR / ".env", "AUTO_OPTIMIZE", val)
+        await update.message.reply_text(f"⚡ Auto-Optimize: {'ON' if Config.AUTO_OPTIMIZE else 'OFF'}")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setopt <on|off>\nExample: /setopt on")
+
+
+async def setbit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setbit <2|4|6|8>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = int(update.message.text.split()[1])
+        if val not in (2, 4, 6, 8):
+            raise ValueError
+        Config.VIDEO_BITRATE_MBPS = val
+        _update_env(Config.BASE_DIR / ".env", "VIDEO_BITRATE_MBPS", str(val))
+        await update.message.reply_text(f"🎚️ Video Bitrate: {val} Mbps")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setbit <2|4|6|8>\nExample: /setbit 4")
+
+
+async def setabit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setabit <128|192|320>"""
+    if not _is_admin(update.effective_user.id):
+        return
+    try:
+        val = int(update.message.text.split()[1])
+        if val not in (128, 192, 320):
+            raise ValueError
+        Config.AUDIO_BITRATE_KBPS = val
+        _update_env(Config.BASE_DIR / ".env", "AUDIO_BITRATE_KBPS", str(val))
+        await update.message.reply_text(f"🎵 Audio Bitrate: {val} kbps")
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /setabit <128|192|320>\nExample: /setabit 192")
+
+
 # ==========================================
 # Register handlers
 # ==========================================
@@ -548,6 +685,12 @@ def get_handlers():
         CommandHandler("start", start_command),
         CommandHandler("help", help_command),
         CommandHandler("setlimit", setlimit_command),
+        CommandHandler("setres", setres_command),
+        CommandHandler("setfmt", setfmt_command),
+        CommandHandler("set4k", set4k_command),
+        CommandHandler("setopt", setopt_command),
+        CommandHandler("setbit", setbit_command),
+        CommandHandler("setabit", setabit_command),
         CallbackQueryHandler(language_callback, pattern=r"^lang_"),
         # Admin text commands from reply keyboard
         MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(
