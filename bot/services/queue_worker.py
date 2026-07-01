@@ -22,7 +22,7 @@ from bot.config import Config
 from bot.database import Database
 from bot.services.downloader import Downloader
 from bot.services.optimizer import QualityOptimizer
-from bot.utils.helpers import format_size, format_time
+from bot.utils.helpers import format_size, format_time, generate_random_string
 
 logger = logging.getLogger(__name__)
 
@@ -206,14 +206,38 @@ class QueueWorker:
                 )
 
     async def _send_file(self, user_id: int, file_path: str, info: dict, format_type: str, original_size: int, optimized_size: int):
-        """Send the file to user with long timeout."""
+        """Send the file to user with thumbnail for audio files."""
         title = info.get("title", "media")
+        thumbnail_url = info.get("thumbnail")
         timeout = {"read_timeout": 300, "write_timeout": 300, "connect_timeout": 30}
 
         try:
             if format_type in ("mp3", "m4a"):
-                with open(file_path, "rb") as f:
-                    await self.app.bot.send_audio(user_id, f, title=title, **timeout)
+                thumb_file = None
+                thumb_path = None
+                try:
+                    # Download thumbnail if available
+                    if thumbnail_url:
+                        thumb_path = await asyncio.get_event_loop().run_in_executor(
+                            None, lambda: self._download_thumbnail(thumbnail_url)
+                        )
+                        if thumb_path:
+                            thumb_file = open(thumb_path, "rb")
+                except Exception as e:
+                    logger.warning(f"Thumbnail download failed: {e}")
+
+                try:
+                    with open(file_path, "rb") as f:
+                        kwargs = {"title": title, **timeout}
+                        if thumb_file:
+                            kwargs["thumb"] = thumb_file
+                        await self.app.bot.send_audio(user_id, f, **kwargs)
+                finally:
+                    # Clean up thumbnail file
+                    if thumb_file:
+                        thumb_file.close()
+                    if thumb_path and os.path.exists(thumb_path):
+                        os.remove(thumb_path)
             else:
                 with open(file_path, "rb") as f:
                     await self.app.bot.send_video(user_id, f, supports_streaming=True, **timeout)
@@ -225,6 +249,20 @@ class QueueWorker:
             except Exception as e2:
                 logger.error(f"Document fallback also failed: {e2}")
                 raise
+
+    def _download_thumbnail(self, url: str) -> str | None:
+        """Download thumbnail image and return path."""
+        import requests
+        thumb_path = str(Config.OPTIMIZED_PATH / f"thumb_{generate_random_string(8)}.jpg")
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                with open(thumb_path, "wb") as f:
+                    f.write(response.content)
+                return thumb_path
+        except Exception as e:
+            logger.warning(f"Thumbnail download failed: {e}")
+        return None
 
     async def _safe_send(self, user_id: int, text: str):
         """Send message, return message object or None."""
